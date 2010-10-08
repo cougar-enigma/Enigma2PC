@@ -65,3 +65,4 @@ dist_install_DATA = \
 	selectioncross.png \
 	unlock.png \
 	unlockBouquet.png
+
