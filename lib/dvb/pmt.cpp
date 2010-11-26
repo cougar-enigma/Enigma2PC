@@ -131,6 +131,8 @@ void eDVBServicePMTHandler::PATready(int)
 	ePtr<eTable<ProgramAssociationSection> > ptr;
 	if (!m_PAT.getCurrent(ptr))
 	{
+		int service_id_single = -1;
+		int pmtpid_single = -1;
 		int pmtpid = -1;
 		std::vector<ProgramAssociationSection*>::const_iterator i;
 		for (i = ptr->getSections().begin(); pmtpid == -1 && i != ptr->getSections().end(); ++i)
@@ -138,8 +140,22 @@ void eDVBServicePMTHandler::PATready(int)
 			const ProgramAssociationSection &pat = **i;
 			ProgramAssociationConstIterator program;
 			for (program = pat.getPrograms()->begin(); pmtpid == -1 && program != pat.getPrograms()->end(); ++program)
+			{
 				if (eServiceID((*program)->getProgramNumber()) == m_reference.getServiceID())
 					pmtpid = (*program)->getProgramMapPid();
+				if (pmtpid_single == -1 && pmtpid == -1)
+				{
+					pmtpid_single = (*program)->getProgramMapPid();
+					service_id_single = (*program)->getProgramNumber();
+				}
+				else
+					pmtpid_single = service_id_single = -1;
+			}
+		}
+		if (pmtpid_single != -1) // only one PAT entry .. so we use this one
+		{
+			m_reference.setServiceID(eServiceID(service_id_single));
+			pmtpid = pmtpid_single;
 		}
 		if (pmtpid == -1)
 			serviceEvent(eventNoPATEntry);
@@ -226,7 +242,28 @@ int eDVBServicePMTHandler::getProgramInfo(program &program)
 			for (i = ptr->getSections().begin(); i != ptr->getSections().end(); ++i)
 			{
 				const ProgramMapSection &pmt = **i;
+				int is_hdmv = 0;
+
 				program.pcrPid = pmt.getPcrPid();
+
+				for (DescriptorConstIterator desc = pmt.getDescriptors()->begin();
+					desc != pmt.getDescriptors()->end(); ++desc)
+				{
+					if ((*desc)->getTag() == CA_DESCRIPTOR)
+					{
+						CaDescriptor *descr = (CaDescriptor*)(*desc);
+						program::capid_pair pair;
+						pair.caid = descr->getCaSystemId();
+						pair.capid = descr->getCaPid();
+						program.caids.insert(pair);
+					}
+					else if ((*desc)->getTag() == REGISTRATION_DESCRIPTOR)
+					{
+						RegistrationDescriptor *d = (RegistrationDescriptor*)(*desc);
+						if (d->getFormatIdentifier() == 0x48444d56) // HDMV
+							is_hdmv = 1;
+					}
+				}
 
 				ElementaryStreamInfoConstIterator es;
 				for (es = pmt.getEsInfo()->begin(); es != pmt.getEsInfo()->end(); ++es)
@@ -283,24 +320,33 @@ int eDVBServicePMTHandler::getProgramInfo(program &program)
 							audio.type = audioStream::atAACHE;
 							forced_audio = 1;
 						}
-					case 0x80: // user private ... but blueray LPCM
-						if (!isvideo && !isaudio)
+					case 0x80: // user private ... but bluray LPCM
+					case 0xA0: // bluray secondary LPCM
+						if (!isvideo && !isaudio && is_hdmv)
 						{
 							isaudio = 1;
 							audio.type = audioStream::atLPCM;
 						}
-					case 0x81: // user private ... but blueray AC3
-						if (!isvideo && !isaudio)
+					case 0x81: // user private ... but bluray AC3
+					case 0xA1: // bluray secondary AC3
+						if (!isvideo && !isaudio && is_hdmv)
 						{
 							isaudio = 1;
 							audio.type = audioStream::atAC3;
 						}
-					case 0x82: // Blueray DTS (dvb user private...)
-					case 0xA2: // Blueray secondary DTS
-						if (!isvideo && !isaudio)
+					case 0x82: // bluray DTS (dvb user private...)
+					case 0xA2: // bluray secondary DTS
+						if (!isvideo && !isaudio && is_hdmv)
 						{
 							isaudio = 1;
 							audio.type = audioStream::atDTS;
+						}
+					case 0x86: // bluray DTS-HD (dvb user private...)
+					case 0xA6: // bluray secondary DTS-HD
+						if (!isvideo && !isaudio && is_hdmv)
+						{
+							isaudio = 1;
+							audio.type = audioStream::atDTSHD;
 						}
 					case 0x06: // PES Private
 					case 0xEA: // TS_PSI_ST_SMPTE_VC1
@@ -493,9 +539,9 @@ int eDVBServicePMTHandler::getProgramInfo(program &program)
 					default:
 						break;
 					}
-					if (isteletext && (isaudio || isvideo)) 
+					if (isteletext && (isaudio || isvideo))
 					{
-						eDebug("ambiguous streamtype for PID %04x detected.. forced as teletext!", (*es)->getPid());					
+						eDebug("ambiguous streamtype for PID %04x detected.. forced as teletext!", (*es)->getPid());
 						continue; // continue with next PID
 					}
 					else if (issubtitle && (isaudio || isvideo))
@@ -532,18 +578,6 @@ int eDVBServicePMTHandler::getProgramInfo(program &program)
 					}
 					else
 						continue;
-				}
-				for (DescriptorConstIterator desc = pmt.getDescriptors()->begin();
-					desc != pmt.getDescriptors()->end(); ++desc)
-				{
-					if ((*desc)->getTag() == CA_DESCRIPTOR)
-					{
-						CaDescriptor *descr = (CaDescriptor*)(*desc);
-						program::capid_pair pair;
-						pair.caid = descr->getCaSystemId();
-						pair.capid = descr->getCaPid();
-						program.caids.insert(pair);
-					}
 				}
 			}
 			ret = 0;
