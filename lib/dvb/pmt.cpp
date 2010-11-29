@@ -173,13 +173,13 @@ PyObject *eDVBServicePMTHandler::getCaIds(bool pair)
 
 	if ( !getProgramInfo(prog) )
 	{
-		int cnt=prog.caids.size();
-		if (cnt)
+		if (pair)
 		{
-			ret=PyList_New(cnt);
-			std::set<program::capid_pair>::iterator it(prog.caids.begin());
-			if (pair)
+			int cnt=prog.caids.size();
+			if (cnt)
 			{
+				ret=PyList_New(cnt);
+				std::list<program::capid_pair>::iterator it(prog.caids.begin());
 				while(cnt--)
 				{
 					ePyObject tuple = PyTuple_New(2);
@@ -188,11 +188,15 @@ PyObject *eDVBServicePMTHandler::getCaIds(bool pair)
 					PyList_SET_ITEM(ret, cnt, tuple);
 				}
 			}
-			else
-			{
-				while(cnt--)
-					PyList_SET_ITEM(ret, cnt, PyInt_FromLong((it++)->caid));
-			}
+		}
+		else
+		{
+			std::set<program::capid_pair> set(prog.caids.begin(), prog.caids.end());
+			std::set<program::capid_pair>::iterator it(set.begin());
+			int cnt=set.size();
+			ret=PyList_New(cnt);
+			while(cnt--)
+				PyList_SET_ITEM(ret, cnt, PyInt_FromLong((it++)->caid));
 		}
 	}
 
@@ -255,7 +259,7 @@ int eDVBServicePMTHandler::getProgramInfo(program &program)
 						program::capid_pair pair;
 						pair.caid = descr->getCaSystemId();
 						pair.capid = descr->getCaPid();
-						program.caids.insert(pair);
+						program.caids.push_back(pair);
 					}
 					else if ((*desc)->getTag() == REGISTRATION_DESCRIPTOR)
 					{
@@ -522,7 +526,7 @@ int eDVBServicePMTHandler::getProgramInfo(program &program)
 								program::capid_pair pair;
 								pair.caid = descr->getCaSystemId();
 								pair.capid = descr->getCaPid();
-								program.caids.insert(pair);
+								program.caids.push_back(pair);
 								break;
 							}
 							default:
@@ -646,7 +650,7 @@ int eDVBServicePMTHandler::getProgramInfo(program &program)
 			program::capid_pair pair;
 			pair.caid = *it;
 			pair.capid = -1; // not known yet
-			program.caids.insert(pair);
+			program.caids.push_back(pair);
 		}
 		if ( cnt )
 			ret = 0;
