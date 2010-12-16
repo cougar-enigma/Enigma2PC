@@ -74,9 +74,9 @@ BUILT_SOURCES = version-intermediate.h
 version-intermediate.h:
 	$(AM_V_GEN)touch $@
 	if [ -n "$(ENIGMA2_COMMIT_DATE)" ]; then \
-		-$(AM_V_at)[ -n "$(ENIGMA2_COMMIT_DATE)" ] && echo "#define ENIGMA2_LAST_CHANGE_DATE \"$(ENIGMA2_COMMIT_DATE)\"" >> $@; \
+		$(AM_V_at)[ -n "$(ENIGMA2_COMMIT_DATE)" ] && echo "#define ENIGMA2_LAST_CHANGE_DATE \"$(ENIGMA2_COMMIT_DATE)\"" >> $@; \
 	else \
-		-$(AM_V_at)[ -n "$(ENIGMA2_DATE)" ] && echo "#define ENIGMA2_LAST_CHANGE_DATE \"$(ENIGMA2_DATE)\"" >> $@; \
+		$(AM_V_at)[ -n "$(ENIGMA2_DATE)" ] && echo "#define ENIGMA2_LAST_CHANGE_DATE \"$(ENIGMA2_DATE)\"" >> $@; \
 	fi;
 	-$(AM_V_at)[ -n "$(ENIGMA2_BRANCH)" ] && echo "#define ENIGMA2_BRANCH \"$(ENIGMA2_BRANCH)\"" >> $@
 	-$(AM_V_at)[ -n "$(ENIGMA2_REV)" ] && echo "#define ENIGMA2_REV \"$(ENIGMA2_REV)\"" >> $@
