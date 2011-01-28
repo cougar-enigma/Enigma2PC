@@ -76,11 +76,15 @@ class AudioSelection(Screen, ConfigListScreen):
 
 			if n > 0:
 				self.audioChannel = service.audioChannel()
-				choicelist = [("0",_("left")), ("1",_("stereo")), ("2", _("right"))]
-				self.settings.channelmode = ConfigSelection(choices = choicelist, default = str(self.audioChannel.getCurrentChannel()))
-				self.settings.channelmode.addNotifier(self.changeMode, initial_call = False)
-				conflist.append(getConfigListEntry(_("Channel"), self.settings.channelmode))
-				self["key_green"].setBoolean(True)
+				if self.audioChannel:
+					choicelist = [("0",_("left")), ("1",_("stereo")), ("2", _("right"))]
+					self.settings.channelmode = ConfigSelection(choices = choicelist, default = str(self.audioChannel.getCurrentChannel()))
+					self.settings.channelmode.addNotifier(self.changeMode, initial_call = False)
+					conflist.append(getConfigListEntry(_("Channel"), self.settings.channelmode))
+					self["key_green"].setBoolean(True)
+				else:
+					conflist.append(('',))
+					self["key_green"].setBoolean(False)
 				selectedAudio = self.audioTracks.getCurrentTrack()
 				for x in range(n):
 					number = str(x)
@@ -136,7 +140,7 @@ class AudioSelection(Screen, ConfigListScreen):
 					language = _("<unknown>")
 					selected = ""
 
-					if sel and x[:4] == sel[:4]:
+					if sel and x == sel:
 						selected = _("Running")
 						selectedidx = idx
 					
@@ -218,7 +222,7 @@ class AudioSelection(Screen, ConfigListScreen):
 		config.av.downmix_ac3.save()
 
 	def changeMode(self, mode):
-		if mode is not None:
+		if mode is not None and self.audioChannel:
 			self.audioChannel.selectChannel(int(mode.getValue()))
 
 	def changeAudio(self, audio):
