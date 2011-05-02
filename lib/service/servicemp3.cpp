@@ -1393,7 +1393,7 @@ void eServiceMP3::gstBusCall(GstBus *bus, GstMessage *msg)
 				if ( gst_is_missing_plugin_message(msg) )
 				{
 					GstCaps *caps;
-					gst_structure_get (msgstruct, "detail", GST_TYPE_CAPS, &caps, NULL); 
+					gst_structure_get ((GstStructure*)msgstruct, "detail", GST_TYPE_CAPS, &caps, NULL); 
 					std::string codec = (const char*) gst_caps_to_string(caps);
 					gchar *description = gst_missing_plugin_message_get_description(msg);
 					if ( description )

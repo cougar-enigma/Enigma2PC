@@ -47,12 +47,17 @@ gdiinclude_HEADERS = \
 	picload.h \
 	region.h
 
-if HAVE_LIBSDL
+if HAVE_XLIB
+libenigma_gdi_a_SOURCES += \
+	gxlibdc.cpp \
+	gxlibdc.h
+else
 libenigma_gdi_a_SOURCES += \
 	sdl.cpp \
 	sdl.h
-else
-libenigma_gdi_a_SOURCES += \
-	gfbdc.cpp \
-	gfbdc.h
 endif
+
+#libenigma_gdi_a_SOURCES += \
+#	gfbdc.cpp \
+#	gfbdc.h
+#endif

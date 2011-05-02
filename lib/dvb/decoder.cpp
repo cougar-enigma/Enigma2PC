@@ -1,6 +1,7 @@
 #include <lib/base/ebase.h>
 #include <lib/base/eerror.h>
 #include <lib/dvb/decoder.h>
+#include <lib/gdi/gxlibdc.h>
 #if HAVE_DVB_API_VERSION < 3 
 #define audioStatus audio_status
 #define videoStatus video_status
@@ -156,17 +157,26 @@ int eDVBAudio::setAVSync(int val)
 	return 0;
 }
 #else
+
+#define ISO_13818_AUDIO          0x04
+#define HDMV_AUDIO_80_PCM        0x80
+#define STREAM_AUDIO_AC3         0x81
+#define HDMV_AUDIO_82_DTS        0x82
+#define HDMV_AUDIO_86_DTS_HD_MA  0x86
+
 int eDVBAudio::startPid(int pid, int type)
 {
-	if ((m_fd < 0) || (m_fd_demux < 0))
+	gXlibDC *xlibDC = gXlibDC::getInstance();
+
+	if (m_fd_demux < 0)
 		return -1;
 	dmx_pes_filter_params pes;
 
 	pes.pid      = pid;
 	pes.input    = DMX_IN_FRONTEND;
-	pes.output   = DMX_OUT_DECODER;
-	pes.pes_type = m_dev ? DMX_PES_AUDIO1 : DMX_PES_AUDIO0; /* FIXME */
-	pes.flags    = 0;
+	pes.output   = DMX_OUT_TS_TAP;
+	pes.pes_type = DMX_PES_OTHER;
+	pes.flags    = DMX_IMMEDIATE_START;
 	eDebugNoNewLine("DMX_SET_PES_FILTER(0x%02x) - audio - ", pid);
 	if (::ioctl(m_fd_demux, DMX_SET_PES_FILTER, &pes) < 0)
 	{
@@ -181,18 +191,19 @@ int eDVBAudio::startPid(int pid, int type)
 		return -errno;
 	}
 	eDebug("ok");
+
 	int bypass = 0;
 
 	switch (type)
 	{
 	case aMPEG:
-		bypass = 1;
+		bypass = ISO_13818_AUDIO;
 		break;
 	case aAC3:
-		bypass = 0;
+		bypass = STREAM_AUDIO_AC3;
 		break;
 	case aDTS:
-		bypass = 2;
+		bypass = HDMV_AUDIO_82_DTS;
 		break;
 	case aAAC:
 		bypass = 8;
@@ -201,24 +212,15 @@ int eDVBAudio::startPid(int pid, int type)
 		bypass = 9;
 		break;
 	case aLPCM:
-		bypass = 6;
+		bypass = HDMV_AUDIO_80_PCM;
 		break;
 	case aDTSHD:
-		bypass = 0x10;
+		bypass = HDMV_AUDIO_86_DTS_HD_MA;
 		break;
 	}
 
-	eDebugNoNewLine("AUDIO_SET_BYPASS(%d) - ", bypass);
-	if (::ioctl(m_fd, AUDIO_SET_BYPASS_MODE, bypass) < 0)
-		eDebug("failed (%m)");
-	else
-		eDebug("ok");
-	freeze();  // why freeze here?!? this is a problem when only a pid change is requested... because of the unfreeze logic in Decoder::setState
-	eDebugNoNewLine("AUDIO_PLAY - ");
-	if (::ioctl(m_fd, AUDIO_PLAY) < 0)
-		eDebug("failed (%m)");
-	else
-		eDebug("ok");
+	xlibDC->setAudioType(pid, bypass);
+
 	return 0;
 }
 #endif
@@ -334,12 +336,12 @@ eDVBVideo::eDVBVideo(eDVBDemux *demux, int dev)
 }
 
 // not finally values i think.. !!
-#define VIDEO_STREAMTYPE_MPEG2 0
-#define VIDEO_STREAMTYPE_MPEG4_H264 1
-#define VIDEO_STREAMTYPE_VC1 3
-#define VIDEO_STREAMTYPE_MPEG4_Part2 4
-#define VIDEO_STREAMTYPE_VC1_SM 5
-#define VIDEO_STREAMTYPE_MPEG1 6
+#define VIDEO_STREAMTYPE_MPEG2       0x02
+#define VIDEO_STREAMTYPE_MPEG4_H264  0x1B
+#define VIDEO_STREAMTYPE_VC1         0xEA
+#define VIDEO_STREAMTYPE_MPEG4_Part2 0x10
+#define VIDEO_STREAMTYPE_VC1_SM      0xEA
+#define VIDEO_STREAMTYPE_MPEG1       0x01
 
 #if HAVE_DVB_API_VERSION < 3
 int eDVBVideo::setPid(int pid)
@@ -399,11 +401,13 @@ int eDVBVideo::stopPid()
 	return 0;
 }
 #else
+
 int eDVBVideo::startPid(int pid, int type)
 {
+	gXlibDC *xlibDC = gXlibDC::getInstance();
 	int streamtype = VIDEO_STREAMTYPE_MPEG2;
 
-	if ((m_fd < 0) || (m_fd_demux < 0))
+	if (m_fd_demux < 0)
 		return -1;
 	dmx_pes_filter_params pes;
 
@@ -430,16 +434,14 @@ int eDVBVideo::startPid(int pid, int type)
 	}
 
 	eDebugNoNewLine("VIDEO_SET_STREAMTYPE %d - ", streamtype);
-	if (::ioctl(m_fd, VIDEO_SET_STREAMTYPE, streamtype) < 0)
-		eDebug("failed (%m)");
-	else
-		eDebug("ok");
+
+	xlibDC->setVideoType(pid, streamtype);
 
 	pes.pid      = pid;
 	pes.input    = DMX_IN_FRONTEND;
-	pes.output   = DMX_OUT_DECODER;
-	pes.pes_type = m_dev ? DMX_PES_VIDEO1 : DMX_PES_VIDEO0; /* FIXME */
-	pes.flags    = 0;
+	pes.output   = DMX_OUT_TS_TAP;
+	pes.pes_type = DMX_PES_OTHER;
+	pes.flags    = DMX_IMMEDIATE_START;
 	eDebugNoNewLine("DMX_SET_PES_FILTER(0x%02x) - video - ", pid);
 	if (::ioctl(m_fd_demux, DMX_SET_PES_FILTER, &pes) < 0)
 	{
@@ -454,30 +456,19 @@ int eDVBVideo::startPid(int pid, int type)
 		return -errno;
 	}
 	eDebug("ok");
-	freeze();  // why freeze here?!? this is a problem when only a pid change is requested... because of the unfreeze logic in Decoder::setState
-	eDebugNoNewLine("VIDEO_PLAY - ");
-	if (::ioctl(m_fd, VIDEO_PLAY) < 0)
-		eDebug("failed (%m)");
-	else
-		eDebug("ok");
+	//freeze();  // why freeze here?!? this is a problem when only a pid change is requested... because of the unfreeze logic in 
+	eDebugNoNewLine("VIDEO_PLAY\n");
+
+	xlibDC->videoStart(pid, type);
+
 	return 0;
 }
 #endif
 
 void eDVBVideo::stop()
 {
-#if HAVE_DVB_API_VERSION > 2
-	eDebugNoNewLine("DEMUX_STOP - video - ");
-	if (::ioctl(m_fd_demux, DMX_STOP) < 0)
-		eDebug("failed (%m)");
-	else
-		eDebug("ok");
-#endif
-	eDebugNoNewLine("VIDEO_STOP - ");
-	if (::ioctl(m_fd, VIDEO_STOP, 1) < 0)
-		eDebug("failed (%m)");
-	else
-		eDebug("ok");
+	gXlibDC *xlibDC = gXlibDC::getInstance();
+	xlibDC->videoStop();
 }
 
 void eDVBVideo::flush()
@@ -695,6 +686,7 @@ DEFINE_REF(eDVBPCR);
 
 eDVBPCR::eDVBPCR(eDVBDemux *demux, int dev): m_demux(demux), m_dev(dev)
 {
+printf("eDVBPCR::eDVBPCR\n");
 	char filename[128];
 #if HAVE_DVB_API_VERSION < 3
 	sprintf(filename, "/dev/dvb/card%d/demux%d", demux->adapter, demux->demux);
@@ -751,9 +743,9 @@ int eDVBPCR::startPid(int pid)
 
 	pes.pid      = pid;
 	pes.input    = DMX_IN_FRONTEND;
-	pes.output   = DMX_OUT_DECODER;
-	pes.pes_type = m_dev ? DMX_PES_PCR1 : DMX_PES_PCR0; /* FIXME */
-	pes.flags    = 0;
+	pes.output   = DMX_OUT_TS_TAP;
+	pes.pes_type = DMX_PES_OTHER;
+	pes.flags    = DMX_IMMEDIATE_START;
 	eDebugNoNewLine("DMX_SET_PES_FILTER(0x%02x) - pcr - ", pid);
 	if (::ioctl(m_fd_demux, DMX_SET_PES_FILTER, &pes) < 0)
 	{

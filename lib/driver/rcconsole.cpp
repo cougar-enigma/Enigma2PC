@@ -108,4 +108,7 @@ public:
 	}
 };
 
+#ifndef WITH_XLIB
 eAutoInitP0<eRCConsoleInit> init_rcconsole(eAutoInitNumbers::rc+1, "Console RC Driver");
+#endif
+

@@ -63,6 +63,16 @@ if test "$with_libxine" = "yes"; then
 fi
 AM_CONDITIONAL(HAVE_LIBXINE, test "$with_libxine" = "yes")
 
+AC_ARG_WITH(xlib,
+	AS_HELP_STRING([--with-xlib],[use xlib, yes or no]),
+	[with_xlib=$withval],[with_xlib=no])
+if test "$with_xlib" = "yes"; then
+	PKG_CHECK_MODULES(LIBXINE, libxine)
+	PKG_CHECK_MODULES(X11, x11)
+	AC_DEFINE([WITH_XLIB],[1],[Define to 1 if you want to use xlib])
+fi
+AM_CONDITIONAL(HAVE_XLIB, test "$with_xlib" = "yes")
+
 AC_ARG_WITH(debug,
 	AS_HELP_STRING([--without-debug],[disable debugging code]),
 	[with_debug="$withval"],[with_debug="yes"])

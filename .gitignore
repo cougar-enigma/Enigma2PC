@@ -33,3 +33,11 @@ py-compile
 stamp-h1
 *.tar.bz2
 *.tar.gz
+*.o.cmd
+*.ko.cmd
+*.ko
+*.mod.c
+descr
+.tmp_versions/
+Module.symvers
+modules.order

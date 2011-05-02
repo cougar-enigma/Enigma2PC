@@ -688,7 +688,7 @@ class NimManager:
 		# nim_slots is an array which has exactly one entry for each slot, even for empty ones.
 		self.nim_slots = [ ]
 
-		nimfile = tryOpen("/proc/bus/nim_sockets")
+		nimfile = tryOpen("/usr/local/etc/tuxbox/nim_sockets")
 
 		if nimfile is None:
 			return

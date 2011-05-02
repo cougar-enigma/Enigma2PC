@@ -125,4 +125,7 @@ public:
 	}
 };
 
+#ifndef WITH_XLIB
 eAutoInitP0<eInputDeviceInit> init_rcinputdev(eAutoInitNumbers::rc+1, "input device driver");
+#endif
+

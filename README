@@ -1,15 +1,6 @@
-To build enigma2 on Ubuntu 10.04, follow these steps:
+It works only with libvdpau for Nvidia cards installed.
 
-0.) Consider using OE to build it for a Dreambox instead.
-
-    To build this version for a Dreambox, you will need
-    a recent OE (branch "opendreambox-1.6" will do, but "3.0" won't)
-    or at least a backported BitBake recipe from there.
-
-    See http://opendreambox.org/.
-
-    Stop reading here. It's not very useful for most people
-    to build enigma2 for a PC.
+To build enigma2 on Ubuntu 10.10, follow these steps:
 
 1.) Install these packages:
 
@@ -57,12 +48,48 @@ dpkg-buildpackage -uc -us
 cd ..
 sudo dpkg -i libdreamdvd*.deb
 
-5.) Build and install enigma2:
+5.) Build and install libdvbcsa:
+
+svn co svn://svn.videolan.org/libdvbcsa/trunk libdvbcsa
+cd libdvbcsa
+dpkg-buildpackage -uc -us
+autoreconf -i
+./configure --prefix=/usr --enable-sse2
+make
+make install
+
+6.) Build and install xine-lib:
+
+svn co svn://svn.videolan.org/libdvbcsa/trunk libdvbcsa
+cd xine-lib
+git checkout remotes/origin/df-osd-handling
+./autogen.sh --disable-xinerama --prefix=/usr
+# apply patch xine_enigma2.patch from patches/ directory
+make
+make install
+
+7.) Build and install enigma2:
 
 git clone git://git.opendreambox.org/git/enigma2.git
 cd enigma2
 autoreconf -i
-./configure --prefix=$HOME/enigma2 --with-libsdl
+./configure --prefix=/usr/local --with-xlib
 make
 make install
 
+8.) Build dvbsoftwareca kernel module:
+cd dvbsoftwareca
+make   # You must have installed dvb-core (for example from s2-liplianin).
+insmod dvbsoftwareca.ko  # It will create ca0 and ca1 devices for adapter0
+
+9.) Build and run software descrambler process:
+cd descr
+make
+./descr  # It works only with ca0 device of adapter0
+
+10.) Make symlinks etc:
+ln -s /dev/dvb/adapter0/demux0 /dev/dvb/adapter0/demux1
+ln -s /dev/dvb/adapter0/dvr0 /dev/dvb/adapter0/dvr1
+ln -s /path_to_file/nim_sockets /proc/bus/nim_sockets
+put required configuration files in /usr/local/etc/tuxbox and /usr/local/etc/enigma2
+put logo.mvi in /usr/local/etc/tuxbox

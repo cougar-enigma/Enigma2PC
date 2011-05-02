@@ -36,3 +36,9 @@ libenigma_driver_a_SOURCES += \
 	rcsdl.cpp \
 	rcsdl.h
 endif
+
+if HAVE_XLIB
+libenigma_driver_a_SOURCES += \
+	rcxlib.cpp \
+	rcxlib.h
+endif
