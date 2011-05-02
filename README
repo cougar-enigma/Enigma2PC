@@ -60,7 +60,7 @@ make install
 
 6.) Build and install xine-lib:
 
-svn co svn://svn.videolan.org/libdvbcsa/trunk libdvbcsa
+git clone git://projects.vdr-developer.org/xine-lib.git
 cd xine-lib
 git checkout remotes/origin/df-osd-handling
 ./autogen.sh --disable-xinerama --prefix=/usr
@@ -70,7 +70,7 @@ make install
 
 7.) Build and install enigma2:
 
-git clone git://git.opendreambox.org/git/enigma2.git
+git clone git://github.com/cougar-enigma/Enigma2PC.git
 cd enigma2
 autoreconf -i
 ./configure --prefix=/usr/local --with-xlib
