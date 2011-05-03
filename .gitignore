@@ -25,6 +25,8 @@ libtool
 *.lo
 ltmain.sh
 Makefile
+!dvbsoftwareca/Makefile
+!descr/Makefile
 Makefile.in
 missing
 moc_*.cpp
@@ -37,7 +39,7 @@ stamp-h1
 *.ko.cmd
 *.ko
 *.mod.c
-descr
+descr/descr
 .tmp_versions/
 Module.symvers
 modules.order
