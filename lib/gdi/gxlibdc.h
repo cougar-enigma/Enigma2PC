@@ -44,7 +44,6 @@ private:
 	x11_visual_t         vis;
 	uint32_t             *surface;
 	gSurface             m_surface;
-	pthread_t            xine_start_thread;
 	int                  fullscreen;
 	int                  windowWidth, windowHeight;
 

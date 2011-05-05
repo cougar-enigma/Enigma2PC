@@ -54,11 +54,11 @@ void cDecoder::Action(void) {
 
             if (len>4 && wsk[0]==0 && wsk[1]==0 && wsk[2]==1
                   && ((wsk[3]>=VIDEO_STREAM_S && wsk[3]<=VIDEO_STREAM_E)
-                  /*|| (wsk[3]>=AUDIO_STREAM_S && wsk[3]<=AUDIO_STREAM_E)*/)) {
+                  || (wsk[3]>=AUDIO_STREAM_S && wsk[3]<=AUDIO_STREAM_E)) ) {
               //video_ok = true;
               stream_correct = true;
               printf("-------------------- I have PES ---------------------- %02X\n", wsk[3]);
-              //outBuffer->Put(packet, (packetsCount-i)*TS_SIZE);
+              outBuffer->Put(packet, (packetsCount-i)*TS_SIZE);
               break;
             }
           }

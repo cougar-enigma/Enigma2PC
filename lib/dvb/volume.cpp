@@ -1,5 +1,6 @@
 #include <lib/base/eerror.h>
 #include <lib/dvb/volume.h>
+#include <lib/gdi/gxlibdc.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -63,14 +64,18 @@ int eDVBVolumecontrol::checkVolume(int vol)
 
 void eDVBVolumecontrol::setVolume(int left, int right)
 {
+	gXlibDC *xlibDC = gXlibDC::getInstance();
+
 		/* left, right is 0..100 */
 	leftVol = checkVolume(left);
 	rightVol = checkVolume(right);
+
+	xine_set_param (xlibDC->stream, XINE_PARAM_AUDIO_VOLUME, leftVol);
 	
 		/* convert to -1dB steps */
-	left = 63 - leftVol * 63 / 100;
+/*	left = 63 - leftVol * 63 / 100;
 	right = 63 - rightVol * 63 / 100;
-		/* now range is 63..0, where 0 is loudest */
+		// now range is 63..0, where 0 is loudest
 
 #if HAVE_DVB_API_VERSION < 3
 	audioMixer_t mixer;
@@ -79,7 +84,7 @@ void eDVBVolumecontrol::setVolume(int left, int right)
 #endif
 
 #if HAVE_DVB_API_VERSION < 3
-		/* convert to linear scale. 0 = loudest, ..63 */
+		// convert to linear scale. 0 = loudest, ..63
 	mixer.volume_left = 63.0-pow(1.068241, 63-left);
 	mixer.volume_right = 63.0-pow(1.068241, 63-right);
 #else
@@ -110,9 +115,9 @@ void eDVBVolumecontrol::setVolume(int left, int right)
 		return;
 	}
 
-	fprintf(f, "%d", left); /* in -1dB */
+	fprintf(f, "%d", left); // in -1dB
 
-	fclose(f);
+	fclose(f);*/
 }
 
 int eDVBVolumecontrol::getVolume()
@@ -128,44 +133,18 @@ bool eDVBVolumecontrol::isMuted()
 
 void eDVBVolumecontrol::volumeMute()
 {
-	int fd = openMixer();
-#ifdef HAVE_DVB_API_VERSION	
-	ioctl(fd, AUDIO_SET_MUTE, true);
-#endif
-	closeMixer(fd);
+	gXlibDC *xlibDC = gXlibDC::getInstance();
+
+	xine_set_param (xlibDC->stream, XINE_PARAM_AUDIO_MUTE, 1);
 	muted = true;
-
-	//HACK?
-	FILE *f;
-	if((f = fopen("/proc/stb/audio/j1_mute", "wb")) == NULL) {
-		eDebug("cannot open /proc/stb/audio/j1_mute(%m)");
-		return;
-	}
-	
-	fprintf(f, "%d", 1);
-
-	fclose(f);
 }
 
 void eDVBVolumecontrol::volumeUnMute()
 {
-	int fd = openMixer();
-#ifdef HAVE_DVB_API_VERSION
-	ioctl(fd, AUDIO_SET_MUTE, false);
-#endif
-	closeMixer(fd);
+	gXlibDC *xlibDC = gXlibDC::getInstance();
+
+	xine_set_param (xlibDC->stream, XINE_PARAM_AUDIO_MUTE, 0);
 	muted = false;
-
-	//HACK?
-	FILE *f;
-	if((f = fopen("/proc/stb/audio/j1_mute", "wb")) == NULL) {
-		eDebug("cannot open /proc/stb/audio/j1_mute(%m)");
-		return;
-	}
-	
-	fprintf(f, "%d", 0);
-
-	fclose(f);
 }
 
 void eDVBVolumecontrol::volumeToggleMute()

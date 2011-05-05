@@ -29,7 +29,7 @@ void eXlibInputDevice::handleCode(long arg)
 	}
 
 	if (1/*km == eRCInput::kmNone*/) {
-		eDebug("eRCInput::kmNone\n");
+		//eDebug("eRCInput::kmNone\n");
 		code = translateKey(event->keycode);
 	} else {
 		eDebug("eRCInput::kmNone NO\n");
@@ -72,7 +72,7 @@ void eXlibInputDevice::handleCode(long arg)
 		flags |= eRCKey::flagAscii;
 	}
 
-	eDebug("SDL code=%d flags=%d", code, flags);
+	//eDebug("SDL code=%d flags=%d", code, flags);
 	input->keyPressed(eRCKey(this, code, flags));
 }
 
@@ -110,6 +110,8 @@ int eXlibInputDevice::translateKey(int key)
 	case 19:
 		return KEY_0;
 
+	case 33: // P
+		return KEY_PLAYPAUSE;
 
 	case 36:
 		return KEY_OK;
@@ -124,6 +126,9 @@ int eXlibInputDevice::translateKey(int key)
 		return KEY_DOWN;
 
 
+	case 58: // M
+		return KEY_MUTE;
+
 	case 65:
 		return KEY_MENU;
 
@@ -136,6 +141,12 @@ int eXlibInputDevice::translateKey(int key)
 		return KEY_YELLOW;
 	case 70:
 		return KEY_BLUE;
+
+
+	case 82: // -
+		return KEY_VOLUMEDOWN;
+	case 86: // +
+		return KEY_VOLUMEUP;
 
 	default:
 		eDebug("unhandled KEYBOARD keycode: %d", key);
@@ -163,8 +174,8 @@ eXlibInputDriver::~eXlibInputDriver()
 
 void eXlibInputDriver::keyPressed(const XKeyEvent &keyEvent)
 {
-	eDebug("km=%d enabled=%d locked=%d",
-		input->getKeyboardMode(), enabled, input->islocked());
+	/*eDebug("km=%d enabled=%d locked=%d",
+		input->getKeyboardMode(), enabled, input->islocked());*/
 
 	if (!enabled || input->islocked())
 		return;

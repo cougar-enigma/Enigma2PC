@@ -90,6 +90,5 @@ make
 10.) Make symlinks etc:
 ln -s /dev/dvb/adapter0/demux0 /dev/dvb/adapter0/demux1
 ln -s /dev/dvb/adapter0/dvr0 /dev/dvb/adapter0/dvr1
-ln -s /path_to_file/nim_sockets /proc/bus/nim_sockets
 put required configuration files in /usr/local/etc/tuxbox and /usr/local/etc/enigma2
 put logo.mvi in /usr/local/etc/tuxbox

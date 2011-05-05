@@ -14,7 +14,7 @@ double    gXlibDC::pixel_aspect;
 gXlibDC::gXlibDC() : m_pump(eApp, 1)
 {
 	double      res_h, res_v;
-	char        mrl[] = "/usr/local/etc/tuxbox/logo.avi";
+	char        mrl[] = "/usr/local/etc/tuxbox/logo.mvi";
 	
 	CONNECT(m_pump.recv_msg, gXlibDC::pumpEvent);
 
@@ -24,10 +24,8 @@ gXlibDC::gXlibDC() : m_pump(eApp, 1)
 	osd = NULL;
 	surface = NULL;
 	fullscreen = 0;
-	width        = 720;
-	height       = 576;
-	windowWidth  = 720;
-	windowHeight = 576;
+	windowWidth  = width  = 720;
+	windowHeight = height = 576;
 
 	ASSERT(instance == 0);
 	instance = this;
@@ -321,38 +319,24 @@ void gXlibDC::dest_size_cb(void *data, int video_width, int video_height, double
 	*dest_pixel_aspect = gXlibDC::pixel_aspect;
 }
 
-void *xine_start_thread_function( void *arg ) {
-	gXlibDC *xlibDC = gXlibDC::getInstance();
-
-	xine_close(xlibDC->stream);
-	if ( !xine_open(xlibDC->stream, "fifo://tmp/ENIGMA_FIFO") ) {
+void gXlibDC::videoStart(int pid, int type) {
+	printf("XINE try START !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+	if ( !xine_open(stream, "fifo://tmp/ENIGMA_FIFO") ) {
 	//if ( !xine_open(stream, "fifo://dev/dvb/adapter0/dvr0") ) {
 		printf("Unable to open stream !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
 	}
 
-	xlibDC->setStreamType(1);
-	xlibDC->setStreamType(0);
+	setStreamType(1);
+	setStreamType(0);
 
-	if( !xine_play(xlibDC->stream, 0, 0) ) {
+	if( !xine_play(stream, 0, 0) ) {
 		printf("Unable to play stream !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
 	}
 	printf("XINE STARTED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-
-}
-
-void gXlibDC::videoStart(int pid, int type) {
-	if (xine_start_thread != NULL) {
-		pthread_cancel(xine_start_thread);
-		xine_start_thread = NULL;
-	}
-	pthread_create( &xine_start_thread, NULL, xine_start_thread_function, NULL);
 }
 
 void gXlibDC::videoStop(void) {
-	if (xine_start_thread != NULL) {
-		pthread_cancel(xine_start_thread);
-		xine_start_thread = NULL;
-	}
+	xine_close(stream);
 }
 
 void gXlibDC::setVideoType(int pid, int type) {

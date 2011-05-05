@@ -92,9 +92,16 @@ static int ca_release(struct inode *inode, struct file *f)
 	return 0;
 }
 
+#ifdef HAVE_UNLOCKED_IOCTL
+static int ca_ioctl(struct file *f,
+#else
 static int ca_ioctl(struct inode *inode, struct file *f,
+#endif
 	unsigned int cmd, unsigned long arg)
 {
+#ifdef HAVE_UNLOCKED_IOCTL
+	struct inode *inode = f->f_dentry->d_inode;
+#endif
 	struct ca_device *cadev = find_device(iminor(inode));
 
 	if (!cadev) {
@@ -135,7 +142,11 @@ static struct file_operations ca_device_fops = {
 	.owner		= THIS_MODULE,
 	.open		= ca_open,
 	.release	= ca_release,
+#ifdef HAVE_UNLOCKED_IOCTL
+	.unlocked_ioctl = ca_ioctl,
+#else
 	.ioctl		= ca_ioctl,
+#endif
 };
 
 static void destroy_ca_device(struct ca_device *cadev)
