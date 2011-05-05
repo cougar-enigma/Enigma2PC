@@ -1,0 +1,138 @@
+From 79779b5b2b1b057327e0ba62bc0de9e2bed5a460 Mon Sep 17 00:00:00 2001
+From: cougar <cougar.enigma@gmail.com>
+Date: Wed, 4 May 2011 01:43:03 +0000
+Subject: [PATCH 1/2] TS as default stream type for FIFO. Fixed displaying OSD without video.
+
+---
+ src/demuxers/demux_ts.c      |   23 -----------------------
+ src/input/input_stdin_fifo.c |   12 ++++++++----
+ src/xine-engine/video_out.c  |    1 +
+ 3 files changed, 9 insertions(+), 27 deletions(-)
+
+diff --git a/src/demuxers/demux_ts.c b/src/demuxers/demux_ts.c
+index 55d7a2e..ea1cc5c 100644
+--- a/src/demuxers/demux_ts.c
++++ b/src/demuxers/demux_ts.c
+@@ -1948,29 +1948,6 @@ static void demux_ts_parse_packet (demux_ts_t*this) {
+ 
+   data_len = PKT_SIZE - data_offset;
+ 
+-  /*
+-   * audio/video pid auto-detection, if necessary
+-   */
+-   program_count=0;
+-   if(this->media_num<MAX_PMTS)
+-      while ((this->program_number[program_count] != INVALID_PROGRAM) &&
+-		 (program_count < MAX_PMTS)) {
+-        if (pid == this->pmt_pid[program_count]) {
+-
+-#ifdef TS_LOG
+-          printf ("demux_ts: PMT prog: 0x%.4x pid: 0x%.4x\n",
+-            this->program_number[program_count],
+-            this->pmt_pid[program_count]);
+-#endif
+-	demux_ts_parse_pmt (this, originalPkt, originalPkt+data_offset-4,
+-	  payload_unit_start_indicator,
+-	  program_count);
+-	  return;
+-      }
+-      program_count++;
+-    }
+-
+-
+   if (data_len > PKT_SIZE) {
+ 
+     xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
+diff --git a/src/input/input_stdin_fifo.c b/src/input/input_stdin_fifo.c
+index 9d6f705..121f12d 100644
+--- a/src/input/input_stdin_fifo.c
++++ b/src/input/input_stdin_fifo.c
+@@ -235,11 +235,15 @@ static int stdin_plugin_get_optional_data (input_plugin_t *this_gen,
+ 
+   switch (data_type) {
+   case INPUT_OPTIONAL_DATA_PREVIEW:
+-
+     memcpy (data, this->preview, this->preview_size);
+     return this->preview_size;
+ 
+-    break;
++  case INPUT_OPTIONAL_DATA_DEMUXER:
++    {
++      char **tmp = (char**)data;
++      *tmp = "mpeg-ts";
++    }
++    return 0;
+   }
+ 
+   return INPUT_OPTIONAL_UNSUPPORTED;
+@@ -277,9 +281,9 @@ static int stdin_plugin_open (input_plugin_t *this_gen ) {
+   /*
+    * fill preview buffer
+    */
++  /*this->preview_size = stdin_plugin_read (&this->input_plugin, this->preview,
++					  MAX_PREVIEW_SIZE);*/
+ 
+-  this->preview_size = stdin_plugin_read (&this->input_plugin, this->preview,
+-					  MAX_PREVIEW_SIZE);
+   if (this->preview_size < 0)
+     this->preview_size = 0;
+   this->curpos          = 0;
+diff --git a/src/xine-engine/video_out.c b/src/xine-engine/video_out.c
+index f348da3..abb7993 100644
+--- a/src/xine-engine/video_out.c
++++ b/src/xine-engine/video_out.c
+@@ -1237,6 +1237,7 @@ static vo_frame_t *get_next_frame (vos_t *this, int64_t cur_vpts,
+       pthread_mutex_unlock( &this->free_img_buf_queue->mutex );
+       if( img ) {
+         img->vpts = cur_vpts;
++        img->duration = DEFAULT_FRAME_DURATION;
+         /* extra info of the backup is thrown away, because it is not up to date */
+         _x_extra_info_reset(img->extra_info);
+         img->future_frame = NULL;
+-- 
+1.7.1
+
+
+From ab963f41d5ee46237021c4ade36ee5f85709d9ee Mon Sep 17 00:00:00 2001
+From: cougar <cougar.enigma@gmail.com>
+Date: Thu, 5 May 2011 10:44:49 +0000
+Subject: [PATCH 2/2] Dynamic buffering based on pts - faster channel switching.
+
+---
+ src/input/net_buf_ctrl.c |   13 ++++++++++++-
+ 1 files changed, 12 insertions(+), 1 deletions(-)
+
+diff --git a/src/input/net_buf_ctrl.c b/src/input/net_buf_ctrl.c
+index d777a0c..de50403 100644
+--- a/src/input/net_buf_ctrl.c
++++ b/src/input/net_buf_ctrl.c
+@@ -45,6 +45,8 @@
+ #define FIFO_PUT                   0
+ #define FIFO_GET                   1
+ 
++#define DEFAULT_PTS_START          150000
++
+ struct nbc_s {
+ 
+   xine_stream_t   *stream;
+@@ -318,7 +320,16 @@ static void nbc_put_cb (fifo_buffer_t *fifo,
+          * be sure that the next buffer_pool_alloc() call will not deadlock,
+          * we need at least 2 buffers (see buffer.c)
+          */
+-        if ((((!has_video) || (this->video_fifo_length > this->high_water_mark)) &&
++        int64_t first_pts = this->video_first_pts>this->audio_first_pts?this->video_first_pts:this->audio_first_pts;
++        int64_t last_pts = this->video_last_pts<this->audio_last_pts?this->video_last_pts:this->audio_last_pts;
++
++        if ( has_video && has_audio && (last_pts-first_pts)>DEFAULT_PTS_START ) {
++          this->progress = 100;
++          report_progress (this->stream, 100);
++          this->buffering = 0;
++          nbc_set_speed_normal(this);
++        }
++        else if ((((!has_video) || (this->video_fifo_length > this->high_water_mark)) &&
+              ((!has_audio) || (this->audio_fifo_length > this->high_water_mark)) &&
+              (has_video || has_audio))) {
+ 
+-- 
+1.7.1
+
