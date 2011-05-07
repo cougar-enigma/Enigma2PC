@@ -282,7 +282,7 @@ bool cScDevice::OpenDvr(void)
 {
   CloseDvr();
   //fd_dvr=DvbOpen(DEV_DVB_DVR,adapter,frontend,O_RDONLY|O_NONBLOCK,true);
-  fd_dvr=DvbOpen(DEV_DVB_DVR,0,1,O_RDONLY|O_NONBLOCK,true);
+  fd_dvr=DvbOpen(DEV_DVB_DVR,0,0,O_RDONLY|O_NONBLOCK,true);
   if(fd_dvr>=0) {
     tsMutex.Lock();
     tsBuffer = new cDeCsaTSBuffer(fd_dvr,MEGABYTE(10),0+1,decsa);

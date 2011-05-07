@@ -14,7 +14,6 @@
 #include "thread.h"
 #include "tools.h"
 #include "ringbuffer.h"
-#include <linux/dvb/ca.h>
 #include <unistd.h>
 #include "decoder.h"
 
@@ -28,10 +27,6 @@ extern cDecoder* example_decoder;
 int parse_cb(struct nl_msg *msg, void *arg) {
 	struct nlmsghdr *nlh = nlmsg_hdr(msg);
 	struct nlattr *attrs[ATTR_MAX+1];
-	unsigned short ca_num;
-	bool ca_num_ok = false;
-	bool cw_ok = false;
-	unsigned char* cw_tmp;
 
 	genlmsg_parse(nlh, 0, attrs, ATTR_MAX, ca_policy);
 
@@ -40,36 +35,23 @@ int parse_cb(struct nl_msg *msg, void *arg) {
 		ca_size = value;
 		printf("ca_size %d\n", value);
 	}
-	if (attrs[ATTR_CA_NUM]) {
-		ca_num = nla_get_u16(attrs[ATTR_CA_NUM]);
-		ca_num_ok = true;
-	}
-	if (attrs[ATTR_CW] && ca_num_ok) {
-		cw_tmp = (unsigned char*)nla_data(attrs[ATTR_CW]);
-		cw_ok = true;
-	}
-	if (attrs[ATTR_CW_TYPE] && ca_num_ok) {
-		unsigned char value = nla_get_u8(attrs[ATTR_CW_TYPE]);
-
-		if (cw_ok) {
-			printf("ca_num %d, parity %d, cw %02X...%02X\n", ca_num, value, cw_tmp[0], cw_tmp[7]);
-			ca_descr_t ca_descr;
-			ca_descr.index=0;
-			ca_descr.parity=value;
-			memcpy(ca_descr.cw,&cw_tmp[0],8);
-			if (ca_num==0x0000){ // only adapter0/ca0
-				if(!example_decoder->sc->SetCaDescr(&ca_descr,0)) {
-					printf("CA_SET_DESCR failed (%s). Expect a black screen.",strerror(errno));
-				}
+	if (attrs[ATTR_CA_NUM] && attrs[ATTR_CA_DESCR]) {
+		unsigned short ca_num = nla_get_u16(attrs[ATTR_CA_NUM]);
+		ca_descr_t *ca = (ca_descr_t*)nla_data(attrs[ATTR_CA_DESCR]);
+		printf("ca_num %d, idx %d, parity %d, cw %02X...%02X\n", ca_num, ca->index, ca->parity, ca->cw[0], ca->cw[7]);
+		if (ca_num==0x0000 && ca->index==0){ // only adapter0/ca0, idx 0
+			if(!example_decoder->sc->SetCaDescr(ca,0)) {
+				printf("CA_SET_DESCR failed (%s). Expect a black screen.",strerror(errno));
 			}
 		}
 	}
-	if (attrs[ATTR_CA_PID] && attrs[ATTR_CA_PID_INDEX]) {
-		unsigned short pid = nla_get_u16(attrs[ATTR_CA_PID]);
-		int pid_index = nla_get_u32(attrs[ATTR_CA_PID_INDEX]);
-		printf("DOSTALEM CA_PID %04X index %d\n", pid, pid_index);
+	if (attrs[ATTR_CA_NUM] && attrs[ATTR_CA_PID]) {
+		unsigned short ca_num = nla_get_u16(attrs[ATTR_CA_NUM]);
+		ca_pid_t *ca_pid = (ca_pid_t*)nla_data(attrs[ATTR_CA_PID]);
+
+		printf("DOSTALEM CA_PID ca_num %02X, pid %04X, index %d\n", ca_num, ca_pid->pid, ca_pid->index);
 		
-		if (pid_index == -1)
+		if (ca_pid->index == -1)
 			example_decoder->Restart();
 	}
 
@@ -98,10 +80,8 @@ int ca_netlink_init() {
 	
 	ca_policy[ATTR_CA_SIZE].type = NLA_U32;
 	ca_policy[ATTR_CA_NUM].type = NLA_U16;
-	ca_policy[ATTR_CW].type = NLA_UNSPEC;
-	ca_policy[ATTR_CW_TYPE].type = NLA_U8;
-	ca_policy[ATTR_CA_PID].type = NLA_U16;
-	ca_policy[ATTR_CA_PID_INDEX].type = NLA_U32;
+	ca_policy[ATTR_CA_DESCR].type = NLA_UNSPEC;
+	ca_policy[ATTR_CA_PID].type = NLA_UNSPEC;
 
 	msg = nlmsg_alloc();
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, NLM_F_ECHO,

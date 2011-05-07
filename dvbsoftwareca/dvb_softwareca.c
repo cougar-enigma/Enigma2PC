@@ -93,7 +93,7 @@ static int ca_release(struct inode *inode, struct file *f)
 }
 
 #ifdef HAVE_UNLOCKED_IOCTL
-static int ca_ioctl(struct file *f,
+static long ca_ioctl(struct file *f,
 #else
 static int ca_ioctl(struct inode *inode, struct file *f,
 #endif
@@ -113,17 +113,13 @@ static int ca_ioctl(struct inode *inode, struct file *f,
 			cadev->device_num, cmd);
 
 	if (cmd == CA_SET_DESCR) {
-		unsigned char local_cw[8];
-		ca_descr_t *ca = (ca_descr_t *)arg;
+		ca_descr_t *ca_descr = (ca_descr_t *)arg;
 		int ca_num = ((cadev->adapter_num&0xFF)<<8)|(cadev->device_num&0xFF);
 
 		printk("cactl CA_SET_DESCR par %d idx %d %02X...%02X\n",
-				ca->parity, ca->index, ca->cw[0], ca->cw[7]);
+				ca_descr->parity, ca_descr->index, ca_descr->cw[0], ca_descr->cw[7]);
 
-		if (copy_from_user(local_cw, ca->cw, 8)) {
-			return -EFAULT;
-		}
-		netlink_send_cw(ca_num, local_cw, ca->parity);
+		netlink_send_cw(ca_num, ca_descr);
 		return 0;
 	}
 	if (cmd == CA_SET_PID) {
@@ -131,7 +127,8 @@ static int ca_ioctl(struct inode *inode, struct file *f,
 		int ca_num = ((cadev->adapter_num&0xFF)<<8)|(cadev->device_num&0xFF);
 
 		printk("cactl CA_SET_PID %04X index %d\n", ca_pid->pid, ca_pid->index);
-		netlink_send_pid(ca_num, ca_pid->pid, ca_pid->index);
+
+		netlink_send_pid(ca_num, ca_pid);
 		return 0;
 	}
 

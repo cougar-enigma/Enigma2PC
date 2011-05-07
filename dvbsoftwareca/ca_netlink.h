@@ -1,12 +1,13 @@
 #ifndef __CA_NETLINK_H
 #define __CA_NETLINK_H
 
+#include <linux/dvb/ca.h>
 #include <linux/netlink.h>
 #include <net/genetlink.h>
 
 int reply_ca(struct sk_buff *skb_2, struct genl_info *info);
-int netlink_send_cw(unsigned char ca_num, unsigned char* cw, unsigned char type);
-int netlink_send_pid(unsigned char ca_num, unsigned short pid, int index);
+int netlink_send_cw(unsigned char ca_num, ca_descr_t *ca_descr);
+int netlink_send_pid(unsigned char ca_num, ca_pid_t *ca_pid);
 int register_netlink(void);
 void unregister_netlink(void);
 
@@ -15,10 +16,8 @@ enum {
 	ATTR_UNSPEC,
 	ATTR_CA_SIZE,
 	ATTR_CA_NUM,
-	ATTR_CW,
-	ATTR_CW_TYPE,
+	ATTR_CA_DESCR,
 	ATTR_CA_PID,
-	ATTR_CA_PID_INDEX,
         __ATTR_MAX,
 };
 #define ATTR_MAX (__ATTR_MAX - 1)

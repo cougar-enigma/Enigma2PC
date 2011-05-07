@@ -70,7 +70,7 @@ int reply_ca(struct sk_buff *skb_2, struct genl_info *info)
 	return 0;
 }
 
-int netlink_send_cw(unsigned char ca_num, unsigned char* cw, unsigned char type) {
+int netlink_send_cw(unsigned char ca_num, ca_descr_t *ca_descr) {
         struct sk_buff *skb;
 	void *msg_head;
 	int ret;
@@ -87,10 +87,7 @@ int netlink_send_cw(unsigned char ca_num, unsigned char* cw, unsigned char type)
 	ret = nla_put_u16(skb, ATTR_CA_NUM, ca_num);
 	if (ret)
 		goto out;
-	ret = nla_put(skb, ATTR_CW, 8, cw);
-	if (ret)
-		goto out;
-	ret = nla_put_u8(skb, ATTR_CW_TYPE, type);
+	ret = nla_put(skb, ATTR_CA_DESCR, sizeof(ca_descr_t), ca_descr);
 	if (ret)
 		goto out;
 
@@ -100,7 +97,6 @@ int netlink_send_cw(unsigned char ca_num, unsigned char* cw, unsigned char type)
 	if (ret)
 		goto out;
 
-	printk("WYSLANO CW\n");
 	return 0;
 
  out:
@@ -108,7 +104,7 @@ int netlink_send_cw(unsigned char ca_num, unsigned char* cw, unsigned char type)
 	return 0;
 }
 
-int netlink_send_pid(unsigned char ca_num, unsigned short pid, int index) {
+int netlink_send_pid(unsigned char ca_num, ca_pid_t *ca_pid) {
         struct sk_buff *skb;
 	void *msg_head;
 	int ret;
@@ -122,10 +118,10 @@ int netlink_send_pid(unsigned char ca_num, unsigned short pid, int index) {
 		goto out;
 	}
 
-	ret = nla_put_u16(skb, ATTR_CA_PID, pid);
+	ret = nla_put_u16(skb, ATTR_CA_NUM, ca_num);
 	if (ret)
 		goto out;
-	ret = nla_put_u32(skb, ATTR_CA_PID_INDEX, index);
+	ret = nla_put(skb, ATTR_CA_PID, sizeof(ca_pid_t), ca_pid);
 	if (ret)
 		goto out;
 
