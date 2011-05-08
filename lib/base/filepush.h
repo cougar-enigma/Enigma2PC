@@ -22,7 +22,7 @@ public:
 	eFilePushThread(int prio_class=IOPRIO_CLASS_BE, int prio_level=0, int blocksize=188);
 	void thread();
 	void stop();
-	void start(int sourcefd, int destfd);
+	void start(int sourcefd, int destfd, int mode=0);
 	int start(const char *filename, int destfd);
 
 	void start(ePtr<iTsSource> &source, int destfd);

@@ -156,6 +156,8 @@ void eFilePushThread::thread()
 
 		if (maxread)
 			m_buf_end = m_source->read(m_current_position, m_buffer, maxread);
+		if (m_buf_end<maxread)
+			usleep(5000);
 
 		if (m_buf_end < 0)
 		{
@@ -182,8 +184,8 @@ void eFilePushThread::thread()
 			{
 				struct pollfd pfd;
 				pfd.fd = m_fd_dest;
-				pfd.events = POLLIN;
-				switch (poll(&pfd, 1, 250)) // wait for 250ms
+				pfd.events = POLLOUT;
+				switch (poll(&pfd, 1, 100)) // wait for 100ms
 				{
 					case 0:
 						eDebug("wait for driver eof timeout");
@@ -224,11 +226,17 @@ void eFilePushThread::thread()
 	eDebug("FILEPUSH THREAD STOP");
 }
 
-void eFilePushThread::start(int fd, int fd_dest)
+void eFilePushThread::start(int fd, int fd_dest, int mode)
 {
 	eRawFile *f = new eRawFile();
 	ePtr<iTsSource> source = f;
 	f->setfd(fd);
+
+	if (mode==1) {
+		int flags = fcntl(fd, F_GETFL, 0);
+		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+	}
+
 	start(source, fd_dest);
 }
 

@@ -4,12 +4,14 @@
 #include <lib/service/iservice.h>
 #include <lib/dvb/idvb.h>
 
+#include <lib/dvb/dvb.h>
 #include <lib/dvb/pmt.h>
 #include <lib/dvb/eit.h>
 #include <lib/dvb/subtitle.h>
 #include <lib/dvb/teletext.h>
 #include <lib/dvb/radiotext.h>
 #include <lib/base/filepush.h>
+
 
 class eStaticServiceDVBInformation;
 class eStaticServiceDVBBouquetInformation;
@@ -291,6 +293,10 @@ protected:
 	void video_event(struct iTSMPEGDecoder::videoEvent);
 
 	virtual ePtr<iTsSource> createTsSource(eServiceReferenceDVB &ref);
+
+		/* Live TV */
+	ePtr<iDVBTSPlayer> m_player;
+	int m_fd_dst;
 };
 
 class eStaticServiceDVBBouquetInformation: public iStaticServiceInformation

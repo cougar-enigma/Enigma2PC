@@ -3,6 +3,7 @@
 
 #include <lib/base/thread.h>
 #include <lib/gdi/gmaindc.h>
+#include <lib/dvb/idvb.h>
 
 #include <xine.h>
 #include <xine/xineutils.h>
@@ -91,6 +92,7 @@ int a;
 	void setVideoType(int pid, int type);
 	void setAudioType(int pid, int type);
 	void setStreamType(int video);
+	int  getPTS(pts_t &now);
 };
 
 #endif

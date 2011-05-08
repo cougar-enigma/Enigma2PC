@@ -110,6 +110,8 @@ eDVBResourceManager::eDVBResourceManager()
 			m_boxtype = DM8000;
 	}
 
+	m_boxtype = X86;
+
 	eDebug("found %zd adapter, %zd frontends(%zd sim) and %zd demux, boxtype %d",
 		m_adapter.size(), m_frontend.size(), m_simulate_frontend.size(), m_demux.size(), m_boxtype);
 
@@ -552,14 +554,22 @@ RESULT eDVBResourceManager::allocateDemux(eDVBRegisteredFrontend *fe, ePtr<eDVBA
 			}
 		}
 	}
+	else if ( m_boxtype == X86 ) {
+
+		for (; i != m_demux.end(); ++i)
+		{
+			if ( !i->m_inuse && i->m_adapter==fe->m_adapter )
+			{
+				unused = i;
+				break;
+			}
+		}
+	}
 
 	if (unused)
 	{
 		demux = new eDVBAllocatedDemux(unused);
-		if (fe)
-			demux->get().setSourceFrontend(fe->m_frontend->getDVBID());
-		else
-			demux->get().setSourcePVR(0);
+		demux->get().setSourceFrontend(fe->m_frontend->getDVBID());
 		return 0;
 	}
 
@@ -1707,7 +1717,7 @@ RESULT eDVBChannel::requestTsidOnid(ePyObject callback)
 
 RESULT eDVBChannel::getDemux(ePtr<iDVBDemux> &demux, int cap)
 {
-	ePtr<eDVBAllocatedDemux> &our_demux = (cap & capDecode) ? m_decoder_demux : m_demux;
+	ePtr<eDVBAllocatedDemux> &our_demux = m_demux;
 
 	if (!our_demux)
 	{
@@ -1788,9 +1798,9 @@ RESULT eDVBChannel::playSource(ePtr<iTsSource> &source, const char *streaminfo_f
 		/* DON'T EVEN THINK ABOUT FIXING THIS. FIX THE ATI SOURCES FIRST,
 		   THEN DO A REAL FIX HERE! */
 
-	if (m_pvr_fd_dst < 0)
+	/*if (m_pvr_fd_dst < 0)
 	{
-		/* (this codepath needs to be improved anyway.) */
+		// (this codepath needs to be improved anyway.)
 #if HAVE_DVB_API_VERSION < 3
 		m_pvr_fd_dst = open("/dev/pvr", O_WRONLY);
 		if (m_pvr_fd_dst < 0)
@@ -1815,6 +1825,15 @@ RESULT eDVBChannel::playSource(ePtr<iTsSource> &source, const char *streaminfo_f
 			return -ENODEV;
 		}
 #endif
+	}*/
+
+	if (m_pvr_fd_dst < 0) {
+		m_pvr_fd_dst = ::open("/tmp/ENIGMA_FIFO", O_RDWR);
+		if (m_pvr_fd_dst < 0)
+		{
+			eDebug("can't open DVR device - FIFO file (%m)");
+			return -ENODEV;
+		}
 	}
 
 	m_pvr_thread = new eDVBChannelFilePush();

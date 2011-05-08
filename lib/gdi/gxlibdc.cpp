@@ -365,4 +365,12 @@ void gXlibDC::setStreamType(int video) {
 	xine_event_send (stream, &event);
 }
 
+int gXlibDC::getPTS(pts_t &now) {
+	now = xine_get_current_vpts(stream);
+	if (now!=0)
+		return 0;
+	else
+		return -1;
+}
+
 eAutoInitPtr<gXlibDC> init_gXlibDC(eAutoInitNumbers::graphic-1, "gXlibDC");

@@ -110,11 +110,21 @@ int eXlibInputDevice::translateKey(int key)
 	case 19:
 		return KEY_0;
 
+
+	case 27: // R
+		return KEY_RECORD;
+	case 28: // T
+		return KEY_TV;
+
 	case 33: // P
 		return KEY_PLAYPAUSE;
 
 	case 36:
 		return KEY_OK;
+
+	case 55: // V
+		return KEY_VIDEO;
+
 
 	case 111:
 		return KEY_UP;

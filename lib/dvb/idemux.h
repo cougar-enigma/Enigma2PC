@@ -56,4 +56,29 @@ public:
 	virtual RESULT connectEvent(const Slot1<void,int> &event, ePtr<eConnection> &conn)=0;
 };
 
+class iDVBTSPlayer: public iObject
+{
+public:
+	virtual RESULT setBufferSize(int size) = 0;
+	virtual RESULT start() = 0;
+	virtual RESULT addPID(int pid) = 0;
+	virtual RESULT removePID(int pid) = 0;
+	virtual RESULT setTargetFD(int fd) = 0;
+	
+	virtual RESULT stop() = 0;
+
+	//virtual RESULT getCurrentPCR(pts_t &pcr) = 0;
+	
+	enum {
+		eventWriteError,
+				/* a write error has occured. data won't get lost if fd is writable after return. */
+				/* you MUST respond with either stop() or fixing the problems, else you get the error */
+				/* again. */
+		eventReachedBoundary,
+				/* the programmed boundary was reached. you might set a new target fd. you can close the */
+				/* old one. */
+	};
+	//virtual RESULT connectEvent(const Slot1<void,int> &event, ePtr<eConnection> &conn)=0;
+};
+
 #endif

@@ -110,19 +110,6 @@ RESULT eDVBDemux::setSourceFrontend(int fenum)
 	return 0;
 }
 
-RESULT eDVBDemux::setSourcePVR(int pvrnum)
-{
-#if HAVE_DVB_API_VERSION >= 3
-	int fd = openDemux();
-	int n = DMX_SOURCE_DVR0 + pvrnum;
-	int res = ::ioctl(fd, DMX_SET_SOURCE, &n);
-	source = -1;
-	::close(fd);
-	return res;
-#endif
-	return 0;
-}
-
 RESULT eDVBDemux::createSectionReader(eMainloop *context, ePtr<iDVBSectionReader> &reader)
 {
 	RESULT res;
@@ -149,9 +136,15 @@ RESULT eDVBDemux::createTSRecorder(ePtr<iDVBTSRecorder> &recorder)
 	return 0;
 }
 
+RESULT eDVBDemux::createTSPlayer(ePtr<iDVBTSPlayer> &player)
+{
+	player = new eDVBTSPlayer(this);
+	return 0;
+}
+
 RESULT eDVBDemux::getMPEGDecoder(ePtr<iTSMPEGDecoder> &decoder, int primary)
 {
-	decoder = new eTSMPEGDecoder(this, primary ? 0 : 1);
+	decoder = new eTSMPEGDecoder(primary ? 0 : 1);
 	return 0;
 }
 
@@ -535,20 +528,6 @@ RESULT eDVBTSRecorder::start()
 		return -3;
 
 	char filename[128];
-#ifndef HAVE_ADD_PID
-#if HAVE_DVB_API_VERSION < 3
-	snprintf(filename, 128, "/dev/dvb/card%d/dvr%d", m_demux->adapter, m_demux->demux);
-#else
-	snprintf(filename, 128, "/dev/dvb/adapter%d/dvr%d", m_demux->adapter, m_demux->demux);
-#endif
-	m_source_fd = ::open(filename, O_RDONLY);
-	
-	if (m_source_fd < 0)
-	{
-		eDebug("FAILED to open dvr (%s) in ts recoder (%m)", filename);
-		return -3;
-	}
-#else
 	snprintf(filename, 128, "/dev/dvb/adapter%d/demux%d", m_demux->adapter, m_demux->demux);
 
 	m_source_fd = ::open(filename, O_RDONLY);
@@ -559,16 +538,11 @@ RESULT eDVBTSRecorder::start()
 		return -3;
 	}
 
-	setBufferSize(1024*1024);
+	setBufferSize(4*1024*1024);
 
 	dmx_pes_filter_params flt;
-#if HAVE_DVB_API_VERSION > 3
 	flt.pes_type = DMX_PES_OTHER;
 	flt.output  = DMX_OUT_TSDEMUX_TAP;
-#else
-	flt.pes_type = (dmx_pes_type_t)DMX_TAP_TS;
-	flt.output  = DMX_OUT_TAP;
-#endif
 	flt.pid     = i->first;
 	++i;
 	flt.input   = DMX_IN_FRONTEND;
@@ -582,19 +556,17 @@ RESULT eDVBTSRecorder::start()
 	}
 	
 	::ioctl(m_source_fd, DMX_START);
-	
-#endif
 
 	if (m_target_filename != "")
 		m_thread->startSaveMetaInformation(m_target_filename);
 	
-	m_thread->start(m_source_fd, m_target_fd);
-	m_running = 1;
-
 	while (i != m_pids.end()) {
 		startPID(i->first);
 		++i;
 	}
+
+	m_thread->start(m_source_fd, m_target_fd, 1);
+	m_running = 1;
 
 	return 0;
 }
@@ -742,12 +714,8 @@ RESULT eDVBTSRecorder::startPID(int pid)
 	m_pids[pid] = fd;
 #else
 	while(true) {
-#if HAVE_DVB_API_VERSION > 3
 		__u16 p = pid;
 		if (::ioctl(m_source_fd, DMX_ADD_PID, &p) < 0) {
-#else
-		if (::ioctl(m_source_fd, DMX_ADD_PID, pid) < 0) {
-#endif
 			perror("DMX_ADD_PID");
 			if (errno == EAGAIN || errno == EINTR) {
 				eDebug("retry!");
@@ -758,24 +726,17 @@ RESULT eDVBTSRecorder::startPID(int pid)
 		break;
 	}
 #endif
+
 	return 0;
 }
 
 void eDVBTSRecorder::stopPID(int pid)
 {
-#ifndef HAVE_ADD_PID
-	if (m_pids[pid] != -1)
-		::close(m_pids[pid]);
-#else
 	if (m_pids[pid] != -1)
 	{
 		while(true) {
-#if HAVE_DVB_API_VERSION > 3
 			__u16 p = pid;
 			if (::ioctl(m_source_fd, DMX_REMOVE_PID, &p) < 0) {
-#else
-			if (::ioctl(m_source_fd, DMX_REMOVE_PID, pid) < 0) {
-#endif
 				perror("DMX_REMOVE_PID");
 				if (errno == EAGAIN || errno == EINTR) {
 					eDebug("retry!");
@@ -785,7 +746,7 @@ void eDVBTSRecorder::stopPID(int pid)
 			break;
 		}
 	}
-#endif
+
 	m_pids[pid] = -1;
 }
 
@@ -798,3 +759,214 @@ void eDVBTSRecorder::filepushEvent(int event)
 		break;
 	}
 }
+
+
+DEFINE_REF(eDVBTSPlayer);
+
+eDVBTSPlayer::eDVBTSPlayer(eDVBDemux *demux): m_demux(demux)
+{
+	printf("eDVBTSPlayer CONSTRUCTOR\n");
+	m_running = 0;
+	m_target_fd = -1;
+	m_thread = new eFilePushThread(IOPRIO_CLASS_RT, 7);
+	//m_thread = new eFilePushThread(IOPRIO_CLASS_BE, 0);
+	CONNECT(m_thread->m_event, eDVBTSPlayer::filepushEvent);
+}
+
+eDVBTSPlayer::~eDVBTSPlayer()
+{
+	printf("eDVBTSPlayer DESTRUCTOR\n");
+	stop();
+	delete m_thread;
+}
+
+RESULT eDVBTSPlayer::start()
+{
+	printf("eDVBTSPlayer start\n");
+	std::map<int,int>::iterator i(m_pids.begin());
+
+	if (m_running)
+		return -1;
+
+	m_running = 1;
+
+	if (m_target_fd == -1)
+		return -2;
+
+	if (i == m_pids.end())
+		return -3;
+
+	char filename[128];
+	snprintf(filename, 128, "/dev/dvb/adapter%d/demux%d", m_demux->adapter, m_demux->demux);
+
+	m_source_fd = ::open(filename, O_RDONLY);
+	
+	if (m_source_fd < 0)
+	{
+		eDebug("FAILED to open demux (%s) in ts recoder (%m)", filename);
+		return -3;
+	}
+
+	setBufferSize(4*1024*1024);
+
+	dmx_pes_filter_params flt;
+	flt.pes_type = DMX_PES_OTHER;
+	flt.output  = DMX_OUT_TSDEMUX_TAP;
+	flt.pid     = i->first;
+	++i;
+	flt.input   = DMX_IN_FRONTEND;
+	flt.flags   = 0;
+
+	int res = ::ioctl(m_source_fd, DMX_SET_PES_FILTER, &flt);
+	if (res)
+	{
+		eDebug("DMX_SET_PES_FILTER: %m");
+		printf("::close(m_source_fd)  %d\n", m_source_fd);
+		::close(m_source_fd);
+		return -3;
+	}
+	
+	::ioctl(m_source_fd, DMX_START);
+	
+	while (i != m_pids.end()) {
+		startPID(i->first);
+		++i;
+	}
+
+	m_thread->start(m_source_fd, m_target_fd, 1);
+
+	printf("eDVBTSPlayer start past\n");
+	return 0;
+}
+
+RESULT eDVBTSPlayer::setBufferSize(int size)
+{
+	int res = ::ioctl(m_source_fd, DMX_SET_BUFFER_SIZE, size);
+	if (res < 0)
+		eDebug("eDVBTSPlayer DMX_SET_BUFFER_SIZE failed(%m)");
+	return res;
+}
+
+RESULT eDVBTSPlayer::addPID(int pid)
+{
+	if (m_pids.find(pid) != m_pids.end())
+		return -1;
+	
+	m_pids.insert(std::pair<int,int>(pid, -1));
+	if (m_running)
+		startPID(pid);
+	return 0;
+}
+
+RESULT eDVBTSPlayer::removePID(int pid)
+{
+	if (m_pids.find(pid) == m_pids.end())
+		return -1;
+		
+	if (m_running)
+		stopPID(pid);
+	
+	m_pids.erase(pid);
+	return 0;
+}
+
+RESULT eDVBTSPlayer::setTargetFD(int fd)
+{
+	m_target_fd = fd;
+	return 0;
+}
+
+RESULT eDVBTSPlayer::stop()
+{
+	int state=3;
+
+	for (std::map<int,int>::iterator i(m_pids.begin()); i != m_pids.end(); ++i)
+		stopPID(i->first);
+
+	if (!m_running)
+		return -1;
+
+#if HAVE_DVB_API_VERSION >= 5
+	printf("workaround for record thread stop\n");
+	/* workaround for record thread stop */
+	if (::ioctl(m_source_fd, DMX_STOP) < 0)
+		perror("DMX_STOP");
+	else
+		state &= ~1;
+
+	if (::close(m_source_fd) < 0)
+		perror("close");
+	else
+		state &= ~2;
+#endif
+
+	m_thread->stop();
+
+	if (state & 3) {
+		printf("::close(m_source_fd)  %d\n", m_source_fd);
+		::close(m_source_fd);
+	}
+
+	m_running = 0;
+	m_source_fd = -1;
+
+	printf("eDVBTSPlayer::stop past\n");
+	return 0;
+}
+
+/*RESULT eDVBTSPlayer::connectEvent(const Slot1<void,int> &event, ePtr<eConnection> &conn)
+{
+	conn = new eConnection(this, m_event.connect(event));
+	return 0;
+}*/
+
+RESULT eDVBTSPlayer::startPID(int pid)
+{
+	printf("eDVBTSPlayer::startPID %d\n", pid);
+	while(true) {
+		__u16 p = pid;
+		if (::ioctl(m_source_fd, DMX_ADD_PID, &p) < 0) {
+			perror("DMX_ADD_PID");
+			if (errno == EAGAIN || errno == EINTR) {
+				eDebug("retry!");
+				continue;
+			}
+		} else
+			m_pids[pid] = 1;
+		break;
+	}
+
+	return 0;
+}
+
+void eDVBTSPlayer::stopPID(int pid)
+{
+	printf("eDVBTSPlayer::stopPID %d\n", pid);
+	if (m_pids[pid] != -1)
+	{
+		while(true) {
+			__u16 p = pid;
+			if (::ioctl(m_source_fd, DMX_REMOVE_PID, &p) < 0) {
+				perror("DMX_REMOVE_PID");
+				if (errno == EAGAIN || errno == EINTR) {
+					eDebug("retry!");
+					continue;
+				}
+			}
+			break;
+		}
+	}
+
+	m_pids[pid] = -1;
+}
+
+void eDVBTSPlayer::filepushEvent(int event)
+{
+	switch (event)
+	{
+	case eFilePushThread::evtWriteError:
+		m_event(eventWriteError);
+		break;
+	}
+}
+

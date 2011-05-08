@@ -936,6 +936,8 @@ eDVBServicePlay::eDVBServicePlay(const eServiceReference &ref, eDVBService *serv
 	m_subtitle_sync_timer = eTimer::create(eApp);
 
 	CONNECT(m_subtitle_sync_timer->timeout, eDVBServicePlay::checkSubtitleTiming);
+
+	m_player = 0;
 }
 
 eDVBServicePlay::~eDVBServicePlay()
@@ -1031,6 +1033,23 @@ void eDVBServicePlay::serviceEvent(int event)
 		}
 		if (!m_timeshift_active)
 			m_event((iPlayableService*)this, evUpdatedInfo);
+
+		ePtr<iDVBDemux> m_demux;
+		if (!m_service_handler.getDataDemux(m_demux))
+		{
+			printf("Start live TV!\n");
+
+			m_demux->createTSPlayer(m_player);
+			if (!m_player)
+				printf("ERROR: !m_player\n");
+			
+			m_player->setTargetFD(m_fd_dst);
+			updateTimeshiftPids();
+			m_player->start();
+
+			printf("Start live TV END\n");
+		}
+
 		break;
 	}
 	case eDVBServicePMTHandler::eventPreStart:
@@ -1138,7 +1157,14 @@ void eDVBServicePlay::serviceEventTimeshift(int event)
 
 RESULT eDVBServicePlay::start()
 {
+	printf("eDVBServicePlay::start\n");
 	eServiceReferenceDVB service = (eServiceReferenceDVB&)m_reference;
+
+	m_fd_dst = ::open("/tmp/ENIGMA_FIFO", O_RDWR);
+	if (m_fd_dst < 0)
+	{
+		eDebug("can't open DVR device - FIFO file (%m)");
+	}
 
 		/* in pvr mode, we only want to use one demux. in tv mode, we're using 
 		   two (one for decoding, one for data source), as we must be prepared
@@ -1180,6 +1206,7 @@ RESULT eDVBServicePlay::start()
 
 RESULT eDVBServicePlay::stop()
 {
+	printf("eDVBServicePlay::stop\n");
 		/* add bookmark for last play position */
 	if (m_is_pvr)
 	{
@@ -1210,6 +1237,16 @@ RESULT eDVBServicePlay::stop()
 	}
 
 	stopTimeshift(); /* in case timeshift was enabled, remove buffer etc. */
+
+	// stop TSPlayer
+	if (m_player) {
+		m_player->stop();
+		m_player = 0;
+	}
+	if (m_fd_dst>0) {
+		printf("close(m_fd_dst)  %d\n", m_fd_dst);
+		close(m_fd_dst);
+	}
 
 	m_service_handler_timeshift.free();
 	m_service_handler.free();
@@ -2266,9 +2303,6 @@ void eDVBServicePlay::setCutListEnable(int enable)
 
 void eDVBServicePlay::updateTimeshiftPids()
 {
-	if (!m_record)
-		return;
-	
 	eDVBServicePMTHandler::program program;
 	eDVBServicePMTHandler &h = m_timeshift_active ? m_service_handler_timeshift : m_service_handler;
 
@@ -2311,11 +2345,18 @@ void eDVBServicePlay::updateTimeshiftPids()
 				std::inserter(new_pids, new_pids.begin())
 				);
 
-		for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
-			m_record->addPID(*i);
+		if (m_record) {
+			for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
+				m_record->addPID(*i);
+			for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
+				m_record->removePID(*i);
+		}
 
+		for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
+			m_player->addPID(*i);
 		for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
-			m_record->removePID(*i);
+			m_player->removePID(*i);
+		printf("updateTimeshiftPids\n");
 	}
 }
 
@@ -2446,38 +2487,44 @@ void eDVBServicePlay::updateDecoder(bool sendSeekableStateChanged)
 
 	if (!m_decoder)
 	{
-		h.getDecodeDemux(m_decode_demux);
-		if (m_decode_demux)
-		{
-			m_decode_demux->getMPEGDecoder(m_decoder, m_is_primary);
-			if (m_decoder)
-				m_decoder->connectVideoEvent(slot(*this, &eDVBServicePlay::video_event), m_video_event_connection);
-			if (m_is_primary)
+		m_decoder = new eTSMPEGDecoder(m_is_primary ? 0 : 1);
+		if (m_decoder)
+			m_decoder->connectVideoEvent(slot(*this, &eDVBServicePlay::video_event),
+					m_video_event_connection);
+
+		if (!m_is_pvr) {
+			h.getDecodeDemux(m_decode_demux);
+			if (m_decode_demux)
 			{
-				m_teletext_parser = new eDVBTeletextParser(m_decode_demux);
-				m_teletext_parser->connectNewPage(slot(*this, &eDVBServicePlay::newSubtitlePage), m_new_subtitle_page_connection);
-				m_subtitle_parser = new eDVBSubtitleParser(m_decode_demux);
-				m_subtitle_parser->connectNewPage(slot(*this, &eDVBServicePlay::newDVBSubtitlePage), m_new_dvb_subtitle_page_connection);
-				if (m_timeshift_changed)
+				if (m_is_primary)
 				{
-					ePyObject subs = getCachedSubtitle();
-					if (subs != Py_None)
+					m_teletext_parser = new eDVBTeletextParser(m_decode_demux);
+					m_teletext_parser->connectNewPage(slot(*this, &eDVBServicePlay::newSubtitlePage), m_new_subtitle_page_connection);
+					m_subtitle_parser = new eDVBSubtitleParser(m_decode_demux);
+					m_subtitle_parser->connectNewPage(slot(*this, &eDVBServicePlay::newDVBSubtitlePage), m_new_dvb_subtitle_page_connection);
+					if (m_timeshift_changed)
 					{
-						int type = PyInt_AsLong(PyTuple_GET_ITEM(subs, 0)),
-						    pid = PyInt_AsLong(PyTuple_GET_ITEM(subs, 1)),
-						    comp_page = PyInt_AsLong(PyTuple_GET_ITEM(subs, 2)), // ttx page
-						    anc_page = PyInt_AsLong(PyTuple_GET_ITEM(subs, 3)); // ttx magazine
-						if (type == 0) // dvb
-							m_subtitle_parser->start(pid, comp_page, anc_page);
-						else if (type == 1) // ttx
-							m_teletext_parser->setPageAndMagazine(comp_page, anc_page);
+						ePyObject subs = getCachedSubtitle();
+						if (subs != Py_None)
+						{
+							int type = PyInt_AsLong(PyTuple_GET_ITEM(subs, 0)),
+							    pid = PyInt_AsLong(PyTuple_GET_ITEM(subs, 1)),
+							    comp_page = PyInt_AsLong(PyTuple_GET_ITEM(subs, 2)), // ttx page
+							    anc_page = PyInt_AsLong(PyTuple_GET_ITEM(subs, 3)); // ttx magazine
+							if (type == 0) // dvb
+								m_subtitle_parser->start(pid, comp_page, anc_page);
+							else if (type == 1) // ttx
+								m_teletext_parser->setPageAndMagazine(comp_page, anc_page);
+						}
+						Py_DECREF(subs);
 					}
-					Py_DECREF(subs);
 				}
 			}
+
+			if (m_cue)
+				m_cue->setDecodingDemux(m_decode_demux, m_decoder);
 		}
-		if (m_cue)
-			m_cue->setDecodingDemux(m_decode_demux, m_decoder);
+
 		mustPlay = true;
 	}
 
@@ -2529,7 +2576,7 @@ void eDVBServicePlay::updateDecoder(bool sendSeekableStateChanged)
 		else
 			m_decoder->setSyncPCR(-1);
 
-		if (m_is_primary)
+		if (m_is_primary && m_decode_demux && !m_is_pvr)
 		{
 			m_decoder->setTextPID(tpid);
 			m_teletext_parser->start(program.textPid);
@@ -2544,6 +2591,7 @@ void eDVBServicePlay::updateDecoder(bool sendSeekableStateChanged)
 				m_decoder->setRadioPic(radio_pic);
 		}
 
+		printf("mustPlay %d\n", mustPlay);
 		if (mustPlay)
 			m_decoder->play();
 		else

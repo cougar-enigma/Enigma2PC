@@ -624,6 +624,7 @@ public:
 class iDVBSectionReader;
 class iDVBPESReader;
 class iDVBTSRecorder;
+class iDVBTSPlayer;
 class iTSMPEGDecoder;
 
 class iDVBDemux: public iObject
@@ -632,6 +633,7 @@ public:
 	virtual RESULT createSectionReader(eMainloop *context, ePtr<iDVBSectionReader> &reader)=0;
 	virtual RESULT createPESReader(eMainloop *context, ePtr<iDVBPESReader> &reader)=0;
 	virtual RESULT createTSRecorder(ePtr<iDVBTSRecorder> &recorder)=0;
+	virtual RESULT createTSPlayer(ePtr<iDVBTSPlayer> &player)=0;
 	virtual RESULT getMPEGDecoder(ePtr<iTSMPEGDecoder> &reader, int primary=1)=0;
 	virtual RESULT getSTC(pts_t &pts, int num=0)=0;
 	virtual RESULT getCADemuxID(uint8_t &id)=0;

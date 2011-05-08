@@ -10,11 +10,10 @@ class eDVBAudio: public iObject
 {
 	DECLARE_REF(eDVBAudio);
 private:
-	ePtr<eDVBDemux> m_demux;
 	int m_fd, m_fd_demux, m_dev, m_is_freezed;
 public:
 	enum { aMPEG, aAC3, aDTS, aAAC, aAACHE, aLPCM, aDTSHD };
-	eDVBAudio(eDVBDemux *demux, int dev);
+	eDVBAudio(int dev);
 	enum { aMonoLeft, aStereo, aMonoRight };
 	void setChannel(int channel);
 	void stop();
@@ -38,7 +37,6 @@ class eDVBVideo: public iObject, public Object
 {
 	DECLARE_REF(eDVBVideo);
 private:
-	ePtr<eDVBDemux> m_demux;
 	int m_fd, m_fd_demux, m_dev;
 #if HAVE_DVB_API_VERSION < 3
 	m_fd_video;
@@ -50,7 +48,7 @@ private:
 	int m_width, m_height, m_framerate, m_aspect, m_progressive;
 public:
 	enum { MPEG2, MPEG4_H264, MPEG1, MPEG4_Part2, VC1, VC1_SM };
-	eDVBVideo(eDVBDemux *demux, int dev);
+	eDVBVideo(int dev);
 	void stop();
 #if HAVE_DVB_API_VERSION < 3
 	int setPid(int pid);
@@ -79,10 +77,9 @@ class eDVBPCR: public iObject
 {
 	DECLARE_REF(eDVBPCR);
 private:
-	ePtr<eDVBDemux> m_demux;
 	int m_fd_demux, m_dev;
 public:
-	eDVBPCR(eDVBDemux *demux, int dev);
+	eDVBPCR(int dev);
 #if HAVE_DVB_API_VERSION < 3
 	int setPid(int pid);
 	int startPid();
@@ -97,10 +94,9 @@ class eDVBTText: public iObject
 {
 	DECLARE_REF(eDVBTText);
 private:
-	ePtr<eDVBDemux> m_demux;
 	int m_fd_demux, m_dev;
 public:
-	eDVBTText(eDVBDemux *demux, int dev);
+	eDVBTText(int dev);
 	int startPid(int pid);
 	void stop();
 	virtual ~eDVBTText();
@@ -114,7 +110,6 @@ private:
 	static int m_ac3_delay;
 	static int m_audio_channel;
 	std::string m_radio_pic;
-	ePtr<eDVBDemux> m_demux;
 	ePtr<eDVBAudio> m_audio;
 	ePtr<eDVBVideo> m_video;
 	ePtr<eDVBPCR> m_pcr;
@@ -143,7 +138,7 @@ private:
 	void finishShowSinglePic(); // called by timer
 public:
 	enum { pidNone = -1 };
-	eTSMPEGDecoder(eDVBDemux *demux, int decoder);
+	eTSMPEGDecoder(int decoder);
 	virtual ~eTSMPEGDecoder();
 	RESULT setVideoPID(int vpid, int type);
 	RESULT setAudioPID(int apid, int type);
