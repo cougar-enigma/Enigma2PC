@@ -16,6 +16,9 @@ gXlibDC::gXlibDC() : m_pump(eApp, 1)
 	double      res_h, res_v;
 	char        mrl[] = "/usr/local/etc/tuxbox/logo.mvi";
 	
+	umask(0);
+	mknod("/tmp/ENIGMA_FIFO", S_IFIFO|0666, 0);
+
 	CONNECT(m_pump.recv_msg, gXlibDC::pumpEvent);
 
 	vo_driver    = "vdpau";
