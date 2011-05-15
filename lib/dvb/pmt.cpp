@@ -69,7 +69,7 @@ void eDVBServicePMTHandler::channelStateChanged(iDVBChannel *channel)
 			}
 		}
 
-		if (m_demux || !m_pvr_channel) {
+		if (m_demux || m_pvr_channel) {
 			if ( m_service && !m_service->cacheEmpty() )
 				serviceEvent(eventNewProgramInfo);
 		}

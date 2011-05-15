@@ -376,4 +376,8 @@ int gXlibDC::getPTS(pts_t &now) {
 		return -1;
 }
 
+xine_event_queue_t* gXlibDC::create_xine_queue() {
+	return xine_event_new_queue (stream);
+}
+
 eAutoInitPtr<gXlibDC> init_gXlibDC(eAutoInitNumbers::graphic-1, "gXlibDC");

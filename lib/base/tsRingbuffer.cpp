@@ -3,36 +3,15 @@
  *
  * Video Disk Recorder
  * Copyright (C) 2000, 2003, 2006, 2008 Klaus Schmidinger
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- * Or, point your browser to http://www.gnu.org/licenses/old-licenses/gpl-2.0.html
- *
  * The author can be reached at kls@tvdr.de
- *
  * The project's page is at http://www.tvdr.de
  *
- * Parts of this file were inspired by the 'ringbuffy.c' from the
- * LinuxDVB driver (see linuxtv.org).
- *
- * $Id: ringbuffer.c 2.3 2009/11/22 11:14:36 kls Exp $
  */
 
-#include "ringbuffer.h"
+#include <lib/base/tsRingbuffer.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "tools.h"
+
 
 // --- cRingBuffer -----------------------------------------------------------
 
@@ -44,7 +23,6 @@ cRingBuffer::cRingBuffer(int Size, bool Statistics)
 {
   size = Size;
   statistics = Statistics;
-  getThreadTid = 0;
   maxFill = 0;
   lastPercent = 0;
   putTimeout = getTimeout = 0;
@@ -55,7 +33,7 @@ cRingBuffer::cRingBuffer(int Size, bool Statistics)
 cRingBuffer::~cRingBuffer()
 {
   if (statistics)
-     dsyslog("buffer stats: %d (%d%%) used", maxFill, maxFill * 100 / (size - 1));
+     printf("buffer stats: %d (%d%%) used\n", maxFill, maxFill * 100 / (size - 1));
 }
 
 void cRingBuffer::UpdatePercentage(int Fill)
@@ -64,11 +42,12 @@ void cRingBuffer::UpdatePercentage(int Fill)
      maxFill = Fill;
   int percent = Fill * 100 / (Size() - 1) / PERCENTAGEDELTA * PERCENTAGEDELTA; // clamp down to nearest quantum
   if (percent != lastPercent) {
-     if (percent >= PERCENTAGETHRESHOLD && percent > lastPercent || percent < PERCENTAGETHRESHOLD && lastPercent >= PERCENTAGETHRESHOLD) {
-        dsyslog("buffer usage: %d%% (tid=%d)", percent, getThreadTid);
-        lastPercent = percent;
-        }
-     }
+    if ((percent >= PERCENTAGETHRESHOLD && percent > lastPercent)
+        || (percent < PERCENTAGETHRESHOLD && lastPercent >= PERCENTAGETHRESHOLD)) {
+      printf("buffer usage: %d%%\n", percent);
+      lastPercent = percent;
+    }
+  }
 }
 
 void cRingBuffer::WaitForPut(void)
@@ -106,7 +85,7 @@ void cRingBuffer::ReportOverflow(int Bytes)
   overflowCount++;
   overflowBytes += Bytes;
   if (time(NULL) - lastOverflowReport > OVERFLOWREPORTDELTA) {
-     esyslog("ERROR: %d ring buffer overflow%s (%d bytes dropped)", overflowCount, overflowCount > 1 ? "s" : "", overflowBytes);
+     printf("ERROR: %d ring buffer overflow%s (%d bytes dropped)\n", overflowCount, overflowCount > 1 ? "s" : "", overflowBytes);
      overflowCount = overflowBytes = 0;
      lastOverflowReport = time(NULL);
      }
@@ -179,16 +158,16 @@ cRingBufferLinear::cRingBufferLinear(int Size, int Margin, bool Statistics, cons
   buffer = NULL;
   if (Size > 1) { // 'Size - 1' must not be 0!
      if (Margin <= Size / 2) {
-        buffer = MALLOC(uchar, Size);
+        buffer = (uint8_t*)malloc(sizeof(uint8_t) * Size);
         if (!buffer)
-           esyslog("ERROR: can't allocate ring buffer (size=%d)", Size);
+           printf("ERROR: can't allocate ring buffer (size=%d)\n", Size);
         Clear();
         }
      else
-        esyslog("ERROR: invalid margin for ring buffer (%d > %d)", Margin, Size / 2);
+        printf("ERROR: invalid margin for ring buffer (%d > %d)\n", Margin, Size / 2);
      }
   else
-     esyslog("ERROR: invalid size for ring buffer (%d)", Size);
+     printf("ERROR: invalid size for ring buffer (%d)\n", Size);
 #ifdef DEBUGRINGBUFFERS
   lastHead = head;
   lastTail = tail;
@@ -206,7 +185,7 @@ cRingBufferLinear::~cRingBufferLinear()
   free(description);
 }
 
-int cRingBufferLinear::DataReady(const uchar *Data, int Count)
+int cRingBufferLinear::DataReady(const uint8_t *Data, int Count)
 {
   return Count >= margin ? Count : 0;
 }
@@ -242,7 +221,7 @@ int cRingBufferLinear::Read(int FileHandle, int Max)
   if (free > 0) {
      if (0 < Max && Max < free)
         free = Max;
-     Count = safe_read(FileHandle, buffer + head, free);
+     Count = read(FileHandle, buffer + head, free);
      if (Count > 0) {
         int Head = head + Count;
         if (Head >= Size())
@@ -268,46 +247,7 @@ int cRingBufferLinear::Read(int FileHandle, int Max)
   return Count;
 }
 
-int cRingBufferLinear::Read(cUnbufferedFile *File, int Max)
-{
-  int Tail = tail;
-  int diff = Tail - head;
-  int free = (diff > 0) ? diff - 1 : Size() - head;
-  if (Tail <= margin)
-     free--;
-  int Count = -1;
-  errno = EAGAIN;
-
-  if (free > 0) {
-     if (0 < Max && Max < free)
-        free = Max;
-     Count = File->Read(buffer + head, free);
-     if (Count > 0) {
-        int Head = head + Count;
-        if (Head >= Size())
-           Head = margin;
-        head = Head;
-        if (statistics) {
-           int fill = head - Tail;
-           if (fill < 0)
-              fill = Size() + fill;
-           else if (fill >= Size())
-              fill = Size() - 1;
-           UpdatePercentage(fill);
-           }
-        }
-     }
-#ifdef DEBUGRINGBUFFERS
-  lastHead = head;
-  lastPut = Count;
-#endif
-  EnableGet();
-  if (free == 0)
-     WaitForPut();
-  return Count;
-}
-
-int cRingBufferLinear::Put(const uchar *Data, int Count)
+int cRingBufferLinear::Put(const uint8_t *Data, int Count)
 {
   if (Count > 0) {
      int Tail = tail;
@@ -347,11 +287,9 @@ int cRingBufferLinear::Put(const uchar *Data, int Count)
   return Count;
 }
 
-uchar *cRingBufferLinear::Get(int &Count)
+uint8_t *cRingBufferLinear::Get(int &Count)
 {
   int Head = head;
-  if (getThreadTid <= 0)
-     getThreadTid = cThread::ThreadId();
   int rest = Size() - tail;
   if (rest < margin && Head < tail) {
      int t = margin - rest;
@@ -363,7 +301,7 @@ uchar *cRingBufferLinear::Get(int &Count)
   int cont = (diff >= 0) ? diff : Size() + diff - margin;
   if (cont > rest)
      cont = rest;
-  uchar *p = buffer + tail;
+  uint8_t *p = buffer + tail;
 
   if ((cont = DataReady(p, cont)) > 0) {
      Count = gotten = cont;
@@ -376,7 +314,7 @@ uchar *cRingBufferLinear::Get(int &Count)
 void cRingBufferLinear::Del(int Count)
 {
   if (Count > gotten) {
-     esyslog("ERROR: invalid Count in cRingBufferLinear::Del: %d (limited to %d)", Count, gotten);
+     printf("ERROR: invalid Count in cRingBufferLinear::Del: %d (limited to %d)\n", Count, gotten);
      Count = gotten;
      }
   if (Count > 0) {

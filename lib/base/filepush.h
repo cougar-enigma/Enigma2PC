@@ -7,6 +7,7 @@
 #include <lib/base/message.h>
 #include <sys/types.h>
 #include <lib/base/rawfile.h>
+#include <lib/dvb/demux.h>
 
 class iFilePushScatterGather
 {
@@ -22,7 +23,8 @@ public:
 	eFilePushThread(int prio_class=IOPRIO_CLASS_BE, int prio_level=0, int blocksize=188);
 	void thread();
 	void stop();
-	void start(int sourcefd, int destfd, int mode=0);
+	void start(ePtr<eDVBDemux> &demux, int fd, int fd_dest);
+	void start(int sourcefd, int destfd);
 	int start(const char *filename, int destfd);
 
 	void start(ePtr<iTsSource> &source, int destfd);

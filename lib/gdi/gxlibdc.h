@@ -93,6 +93,7 @@ int a;
 	void setAudioType(int pid, int type);
 	void setStreamType(int video);
 	int  getPTS(pts_t &now);
+	xine_event_queue_t* create_xine_queue();
 };
 
 #endif

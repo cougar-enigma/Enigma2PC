@@ -955,6 +955,22 @@ bool eDVBResourceManager::canMeasureFrontendInputPower()
 	return false;
 }
 
+RESULT eDVBResourceManager::getAdapterDemux(ePtr<eDVBDemux> &demux, int adapter_nr, int demux_nr)
+{
+	eSmartPtrList<iDVBAdapter>::iterator i(m_adapter.begin());
+
+	while (adapter_nr && (i != m_adapter.end())) {
+		--adapter_nr;
+		++i;
+	}
+
+	if (i != m_adapter.end())
+		return i->getDemux(demux, demux_nr);
+	else
+		return -1;
+}
+
+
 class eDVBChannelFilePush: public eFilePushThread
 {
 public:
@@ -1797,35 +1813,6 @@ RESULT eDVBChannel::playSource(ePtr<iTsSource> &source, const char *streaminfo_f
 
 		/* DON'T EVEN THINK ABOUT FIXING THIS. FIX THE ATI SOURCES FIRST,
 		   THEN DO A REAL FIX HERE! */
-
-	/*if (m_pvr_fd_dst < 0)
-	{
-		// (this codepath needs to be improved anyway.)
-#if HAVE_DVB_API_VERSION < 3
-		m_pvr_fd_dst = open("/dev/pvr", O_WRONLY);
-		if (m_pvr_fd_dst < 0)
-		{
-			eDebug("can't open /dev/pvr - you need to buy the new(!) $$$ box! (%m)"); // or wait for the driver to be improved.
-			return -ENODEV;
-		}
-#else
-		ePtr<eDVBAllocatedDemux> &demux = m_demux ? m_demux : m_decoder_demux;
-		if (demux)
-		{
-			m_pvr_fd_dst = demux->get().openDVR(O_WRONLY);
-			if (m_pvr_fd_dst < 0)
-			{
-				eDebug("can't open /dev/dvb/adapterX/dvrX - you need to buy the new(!) $$$ box! (%m)"); // or wait for the driver to be improved.
-				return -ENODEV;
-			}
-		}
-		else
-		{
-			eDebug("no demux allocated yet.. so its not possible to open the dvr device!!");
-			return -ENODEV;
-		}
-#endif
-	}*/
 
 	if (m_pvr_fd_dst < 0) {
 		m_pvr_fd_dst = ::open("/tmp/ENIGMA_FIFO", O_RDWR);

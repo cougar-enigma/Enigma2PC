@@ -251,3 +251,90 @@ off_t eRawFile::length()
 {
 	return m_totallength;
 }
+
+#define KILOBYTE(n) ((n) * 1024)
+#define MEGABYTE(n) ((n) * 1024LL * 1024LL)
+
+eDecryptRawFile::eDecryptRawFile()
+{
+	ringBuffer = new cRingBufferLinear(MEGABYTE(2),TS_SIZE,true,"IN-TS");
+	ringBuffer->SetTimeouts(100,100);
+	bs_size = dvbcsa_bs_batch_size();
+	delivered=false;
+	lastPacketsCount = 0;
+}
+
+eDecryptRawFile::~eDecryptRawFile()
+{
+	delete ringBuffer;
+}
+
+void eDecryptRawFile::setDemux(ePtr<eDVBDemux> _demux) {
+	demux = _demux;
+}
+
+uint8_t* eDecryptRawFile::getPackets(int &packetsCount) {
+	int Count=0;
+	if(delivered) {
+		ringBuffer->Del(lastPacketsCount*TS_SIZE);
+		delivered=false;
+	}
+	packetsCount = 0;
+
+	if (ringBuffer->Available()<bs_size*TS_SIZE)
+		return NULL;
+
+	uint8_t* p=ringBuffer->Get(Count);
+	if (Count>KILOBYTE(64))
+		Count = KILOBYTE(64);
+
+	if(p && Count>=TS_SIZE) {
+		if(*p!=TS_SYNC_BYTE) {
+			for(int i=1; i<Count; i++)
+				if(p[i]==TS_SYNC_BYTE &&
+						(i+TS_SIZE==Count || (i+TS_SIZE>Count && p[i+TS_SIZE]==TS_SYNC_BYTE)) ) {
+					Count=i;
+					break;
+				}
+				ringBuffer->Del(Count);
+				eDebug("ERROR: skipped %d bytes to sync on TS packet", Count);
+				return NULL;
+		}
+		if(!demux->decrypt(p, Count, packetsCount)) {
+			cCondWait::SleepMs(20);
+			return NULL;
+		}
+		lastPacketsCount = packetsCount;
+		delivered=true;
+		return p;
+	}
+
+	return NULL;
+}
+
+ssize_t eDecryptRawFile::read(off_t offset, void *buf, size_t count)
+{
+	eSingleLocker l(m_lock);
+	int ret;
+
+	while (ringBuffer->Available()<KILOBYTE(128)) {
+		ret = ringBuffer->Read(m_fd, KILOBYTE(64));
+		if (ret<0)
+			break;
+	}
+
+	int packetsCount = 0;
+
+	uint8_t *data = getPackets(packetsCount);
+
+	//printf("getPackets(packetsCount) %d\n", packetsCount);
+
+	if (data && packetsCount>0) {
+		ret = packetsCount*TS_SIZE;
+		memcpy(buf, data, ret);
+	} else
+		ret = EBUSY;
+
+	return ret;
+}
+

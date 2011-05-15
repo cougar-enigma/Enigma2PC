@@ -1,17 +1,7 @@
-/*
- * ringbuffer.h: A ring buffer
- *
- * See the main source file 'vdr.c' for copyright information and
- * how to reach the author.
- *
- * $Id: ringbuffer.h 2.2 2009/11/08 11:52:25 kls Exp $
- */
+#ifndef __tsringbuffer_h
+#define __tsringbuffer_h
 
-#ifndef __RINGBUFFER_H
-#define __RINGBUFFER_H
-
-#include "thread.h"
-#include "tools.h"
+#include <lib/base/condVar.h>
 
 class cRingBuffer {
 private:
@@ -23,7 +13,6 @@ private:
   int overflowCount;
   int overflowBytes;
 protected:
-  tThreadId getThreadTid;
   int maxFill;//XXX
   int lastPercent;
   bool statistics;//XXX
@@ -58,10 +47,10 @@ public:
 private:
   int margin, head, tail;
   int gotten;
-  uchar *buffer;
+  uint8_t *buffer;
   char *description;
 protected:
-  virtual int DataReady(const uchar *Data, int Count);
+  virtual int DataReady(const uint8_t *Data, int Count);
     ///< By default a ring buffer has data ready as soon as there are at least
     ///< 'margin' bytes available. A derived class can reimplement this function
     ///< if it has other conditions that define when data is ready.
@@ -84,12 +73,10 @@ public:
     ///< Only one actual read() call is done.
     ///< \return Returns the number of bytes actually read and stored, or
     ///< an error value from the actual read() call.
-  int Read(cUnbufferedFile *File, int Max = 0);
-    ///< Like Read(int FileHandle, int Max), but reads fom a cUnbufferedFile).
-  int Put(const uchar *Data, int Count);
+  int Put(const uint8_t *Data, int Count);
     ///< Puts at most Count bytes of Data into the ring buffer.
     ///< \return Returns the number of bytes actually stored.
-  uchar *Get(int &Count);
+  uint8_t *Get(int &Count);
     ///< Gets data from the ring buffer.
     ///< The data will remain in the buffer until a call to Del() deletes it.
     ///< \return Returns a pointer to the data, and stores the number of bytes
@@ -100,4 +87,4 @@ public:
     ///< call to Get().
   };
 
-#endif // __RINGBUFFER_H
+#endif

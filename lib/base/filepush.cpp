@@ -1,5 +1,6 @@
 #include <lib/base/filepush.h>
 #include <lib/base/eerror.h>
+#include <lib/gdi/gxlibdc.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -45,6 +46,9 @@ void eFilePushThread::thread()
 	act.sa_flags = 0;
 	sigaction(SIGUSR1, &act, 0);
 	
+	gXlibDC *xlibDC = gXlibDC::getInstance();
+	xine_event_queue_t* xine_queue = xlibDC->create_xine_queue();
+
 	hasStarted();
 
 		/* m_stop must be evaluated after each syscall. */
@@ -156,8 +160,6 @@ void eFilePushThread::thread()
 
 		if (maxread)
 			m_buf_end = m_source->read(m_current_position, m_buffer, maxread);
-		if (m_buf_end<maxread)
-			usleep(5000);
 
 		if (m_buf_end < 0)
 		{
@@ -203,7 +205,17 @@ void eFilePushThread::thread()
 				   over and over until somebody responds.
 				   
 				   in stream_mode, think of evtEOF as "buffer underrun occured". */
-			sendEvent(evtEOF);
+			xine_event_t *event;
+			while ( (event=xine_event_get(xine_queue)) != NULL ) {
+				if (event->type==XINE_EVENT_NBC_STATS) {
+					xine_nbc_stats_data_t* stats = (xine_nbc_stats_data_t*)event->data;
+					if (!stats->buffering && stats->v_percent<5) {
+						sendEvent(evtEOF);
+					}
+				}
+
+				xine_event_free(event);
+			}
 
 			if (m_stream_mode)
 			{
@@ -223,20 +235,15 @@ void eFilePushThread::thread()
 	}
 	fdatasync(m_fd_dest);
 
+	xine_event_dispose_queue(xine_queue);
 	eDebug("FILEPUSH THREAD STOP");
 }
 
-void eFilePushThread::start(int fd, int fd_dest, int mode)
+void eFilePushThread::start(int fd, int fd_dest)
 {
 	eRawFile *f = new eRawFile();
 	ePtr<iTsSource> source = f;
 	f->setfd(fd);
-
-	if (mode==1) {
-		int flags = fcntl(fd, F_GETFL, 0);
-		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-	}
-
 	start(source, fd_dest);
 }
 
@@ -256,6 +263,16 @@ void eFilePushThread::start(ePtr<iTsSource> &source, int fd_dest)
 	m_fd_dest = fd_dest;
 	m_current_position = 0;
 	resume();
+}
+
+void eFilePushThread::start(ePtr<eDVBDemux> &demux, int fd, int fd_dest)
+{
+	eDecryptRawFile *f = new eDecryptRawFile();
+	ePtr<iTsSource> source = f;
+	f->setfd(fd);
+	f->setDemux(demux);
+
+	start(source, fd_dest);
 }
 
 void eFilePushThread::stop()

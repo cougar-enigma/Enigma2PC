@@ -67,21 +67,18 @@ typedef enum {
 
 eDVBDemux::eDVBDemux(int adapter, int demux): adapter(adapter), demux(demux)
 {
-	m_dvr_busy = 0;
+	decsa = new cDeCSA(adapter, demux);
 }
 
 eDVBDemux::~eDVBDemux()
 {
+	delete decsa;
 }
 
 int eDVBDemux::openDemux(void)
 {
 	char filename[128];
-#if HAVE_DVB_API_VERSION < 3
-	snprintf(filename, 128, "/dev/dvb/card%d/demux%d", adapter, demux);
-#else
 	snprintf(filename, 128, "/dev/dvb/adapter%d/demux%d", adapter, demux);
-#endif
 	return ::open(filename, O_RDWR);
 }
 
@@ -96,7 +93,6 @@ DEFINE_REF(eDVBDemux)
 
 RESULT eDVBDemux::setSourceFrontend(int fenum)
 {
-#if HAVE_DVB_API_VERSION >= 3
 	int fd = openDemux();
 	int n = DMX_SOURCE_FRONT0 + fenum;
 	int res = ::ioctl(fd, DMX_SET_SOURCE, &n);
@@ -106,8 +102,6 @@ RESULT eDVBDemux::setSourceFrontend(int fenum)
 		source = fenum;
 	::close(fd);
 	return res;
-#endif
-	return 0;
 }
 
 RESULT eDVBDemux::createSectionReader(eMainloop *context, ePtr<iDVBSectionReader> &reader)
@@ -130,8 +124,6 @@ RESULT eDVBDemux::createPESReader(eMainloop *context, ePtr<iDVBPESReader> &reade
 
 RESULT eDVBDemux::createTSRecorder(ePtr<iDVBTSRecorder> &recorder)
 {
-	if (m_dvr_busy)
-		return -EBUSY;
 	recorder = new eDVBTSRecorder(this);
 	return 0;
 }
@@ -186,6 +178,20 @@ RESULT eDVBDemux::connectEvent(const Slot1<void,int> &event, ePtr<eConnection> &
 {
 	conn = new eConnection(this, m_event.connect(event));
 	return 0;
+}
+
+RESULT eDVBDemux::setCaDescr(ca_descr_t *ca_descr, bool initial)
+{
+	return decsa->SetDescr(ca_descr, initial);
+}
+
+RESULT eDVBDemux::setCaPid(ca_pid_t *ca_pid)
+{
+	return decsa->SetCaPid(ca_pid);
+}
+
+bool eDVBDemux::decrypt(uint8_t *data, int len, int &packetsCount) {
+	return decsa->Decrypt(data, len, packetsCount);
 }
 
 void eDVBSectionReader::data(int)
@@ -500,18 +506,12 @@ eDVBTSRecorder::eDVBTSRecorder(eDVBDemux *demux): m_demux(demux)
 	m_target_fd = -1;
 	m_thread = new eDVBRecordFileThread();
 	CONNECT(m_thread->m_event, eDVBTSRecorder::filepushEvent);
-#ifndef HAVE_ADD_PID
-	m_demux->m_dvr_busy = 1;
-#endif
 }
 
 eDVBTSRecorder::~eDVBTSRecorder()
 {
 	stop();
 	delete m_thread;
-#ifndef HAVE_ADD_PID
-	m_demux->m_dvr_busy = 0;
-#endif
 }
 
 RESULT eDVBTSRecorder::start()
@@ -565,7 +565,7 @@ RESULT eDVBTSRecorder::start()
 		++i;
 	}
 
-	m_thread->start(m_source_fd, m_target_fd, 1);
+	m_thread->start(m_demux, m_source_fd, m_target_fd);
 	m_running = 1;
 
 	return 0;
@@ -629,33 +629,17 @@ RESULT eDVBTSRecorder::stop()
 {
 	int state=3;
 
-	for (std::map<int,int>::iterator i(m_pids.begin()); i != m_pids.end(); ++i)
-		stopPID(i->first);
-
 	if (!m_running)
 		return -1;
-
-#if HAVE_DVB_API_VERSION >= 5
-	/* workaround for record thread stop */
-	if (::ioctl(m_source_fd, DMX_STOP) < 0)
-		perror("DMX_STOP");
-	else
-		state &= ~1;
 
 	if (::close(m_source_fd) < 0)
 		perror("close");
 	else
-		state &= ~2;
-#endif
+		m_source_fd = -1;
 
 	m_thread->stop();
-
-	if (state & 3)
-		::close(m_source_fd);
-
 	m_running = 0;
-	m_source_fd = -1;
-
+	
 	m_thread->stopSaveMetaInformation();
 	return 0;
 }
@@ -821,7 +805,6 @@ RESULT eDVBTSPlayer::start()
 	if (res)
 	{
 		eDebug("DMX_SET_PES_FILTER: %m");
-		printf("::close(m_source_fd)  %d\n", m_source_fd);
 		::close(m_source_fd);
 		return -3;
 	}
@@ -833,7 +816,7 @@ RESULT eDVBTSPlayer::start()
 		++i;
 	}
 
-	m_thread->start(m_source_fd, m_target_fd, 1);
+	m_thread->start(m_demux, m_source_fd, m_target_fd);
 
 	printf("eDVBTSPlayer start past\n");
 	return 0;
@@ -880,33 +863,17 @@ RESULT eDVBTSPlayer::stop()
 {
 	int state=3;
 
-	for (std::map<int,int>::iterator i(m_pids.begin()); i != m_pids.end(); ++i)
-		stopPID(i->first);
-
 	if (!m_running)
 		return -1;
 
-#if HAVE_DVB_API_VERSION >= 5
-	printf("workaround for record thread stop\n");
-	/* workaround for record thread stop */
-	if (::ioctl(m_source_fd, DMX_STOP) < 0)
-		perror("DMX_STOP");
-	else
-		state &= ~1;
+	printf("workaround for player thread stop\n");
 
 	if (::close(m_source_fd) < 0)
-		perror("close");
+		perror("DMX_close ERROR");
 	else
-		state &= ~2;
-#endif
+		m_source_fd = -1;
 
 	m_thread->stop();
-
-	if (state & 3) {
-		printf("::close(m_source_fd)  %d\n", m_source_fd);
-		::close(m_source_fd);
-	}
-
 	m_running = 0;
 	m_source_fd = -1;
 

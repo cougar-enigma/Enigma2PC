@@ -24,7 +24,9 @@ libenigma_base_a_SOURCES = \
 	nconfig.cpp \
 	rawfile.cpp \
 	smartptr.cpp \
-	thread.cpp
+	thread.cpp \
+	tsRingbuffer.cpp \
+	condVar.cpp
 
 EXTRA_DIST = \
 	eenv.cpp.in
@@ -53,4 +55,6 @@ baseinclude_HEADERS = \
 	rawfile.h \
 	ringbuffer.h \
 	smartptr.h \
-	thread.h
+	thread.h \
+	tsRingbuffer.h \
+	condVar.h
