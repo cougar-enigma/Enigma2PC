@@ -1,5 +1,5 @@
 /*
- * ringbuffer.c: A ring buffer
+ * tsRingbuffer.cpp: A ring buffer
  *
  * Video Disk Recorder
  * Copyright (C) 2000, 2003, 2006, 2008 Klaus Schmidinger

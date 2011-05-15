@@ -52,7 +52,6 @@ sudo dpkg -i libdreamdvd*.deb
 
 svn co svn://svn.videolan.org/libdvbcsa/trunk libdvbcsa
 cd libdvbcsa
-dpkg-buildpackage -uc -us
 autoreconf -i
 ./configure --prefix=/usr --enable-sse2
 make
@@ -82,13 +81,7 @@ cd dvbsoftwareca
 make   # You must have installed dvb-core (for example from s2-liplianin).
 insmod dvbsoftwareca.ko  # It will create ca0 and ca1 devices for adapter0
 
-9.) Build and run software descrambler process:
-cd descr
-make
-./descr  # It works only with ca0 device of adapter0
-
-10.) Make symlinks etc:
-ln -s /dev/dvb/adapter0/demux0 /dev/dvb/adapter0/demux1
-ln -s /dev/dvb/adapter0/dvr0 /dev/dvb/adapter0/dvr1
+9.) Prepare configuration files:
 put required configuration files in /usr/local/etc/tuxbox and /usr/local/etc/enigma2
 put logo.mvi in /usr/local/etc/tuxbox
+prepare /usr/local/etc/tuxbox/nim_sockets for your adapters

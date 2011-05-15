@@ -1,5 +1,5 @@
 /*
- * ringbuffer.c: A ring buffer
+ * condVar.cpp: Mutexes, conditional vars.
  *
  * Video Disk Recorder
  * Copyright (C) 2000, 2003, 2006, 2008 Klaus Schmidinger
