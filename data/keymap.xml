@@ -211,6 +211,9 @@
 		<device name="dreambox advanced remote control (native)">
 			<key id="KEY_YELLOW" mapto="audioSelection" flags="b" />
 		</device>
+		<device name="Xlib">
+			<key id="KEY_AUDIO" mapto="audioSelection" flags="m" />
+		</device>
 	</map>
 
 	<map context="InfobarSubserviceSelectionActions">
@@ -405,6 +408,10 @@
 			<key id="KEY_STOP" mapto="leavePlayer" flags="m" />
 		</device>
 		<device name="dreambox ir keyboard">
+			<key id="KEY_STOP" mapto="leavePlayer" flags="m" />
+		</device>
+		<device name="Xlib">
+			<key id="KEY_TV" mapto="leavePlayer" flags="m" />
 			<key id="KEY_STOP" mapto="leavePlayer" flags="m" />
 		</device>
 	</map>

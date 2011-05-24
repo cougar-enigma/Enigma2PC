@@ -122,6 +122,9 @@ int eXlibInputDevice::translateKey(int key)
 	case 36:
 		return KEY_OK;
 
+	case 38: // A
+		return KEY_AUDIO;
+
 	case 55: // V
 		return KEY_VIDEO;
 
