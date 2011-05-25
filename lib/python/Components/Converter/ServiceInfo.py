@@ -40,7 +40,7 @@ class ServiceInfo(Converter, object):
 				"TsId": (self.TSID, (iPlayableService.evUpdatedInfo,)),
 				"OnId": (self.ONID, (iPlayableService.evUpdatedInfo,)),
 				"Sid": (self.SID, (iPlayableService.evUpdatedInfo,)),
-				"Framerate": (self.FRAMERATE, (iPlayableService.evVideoSizeChanged,iPlayableService.evUpdatedInfo,)),
+				"Framerate": (self.FRAMERATE, (iPlayableService.evVideoFramerateChanged,)),
 				"TransferBPS": (self.TRANSFERBPS, (iPlayableService.evUpdatedInfo,)),
 			}[type]
 

@@ -6,26 +6,21 @@
 #include <lib/driver/rcxlib.h>
 
 gXlibDC   *gXlibDC::instance;
-Display   *display;
-Window    window;
+Display   *gXlibDC::display;
+Window    gXlibDC::window;
 int       gXlibDC::width, gXlibDC::height;
 double    gXlibDC::pixel_aspect;
 
 gXlibDC::gXlibDC() : m_pump(eApp, 1)
 {
 	double      res_h, res_v;
-	char        mrl[] = "/usr/local/etc/tuxbox/logo.mvi";
 	
 	umask(0);
 	mknod("/tmp/ENIGMA_FIFO", S_IFIFO|0666, 0);
 
 	CONNECT(m_pump.recv_msg, gXlibDC::pumpEvent);
 
-	vo_driver    = "vdpau";
-	ao_driver    = "alsa";
-
-	osd = NULL;
-	surface = NULL;
+	argb_buffer = NULL;
 	fullscreen = 0;
 	windowWidth  = width  = 720;
 	windowHeight = height = 576;
@@ -38,12 +33,6 @@ gXlibDC::gXlibDC() : m_pump(eApp, 1)
 		eFatal("XInitThreads() failed\n");
 		return;
 	}
-
-	xine = xine_new();
-	sprintf(configfile, "%s%s", xine_get_homedir(), "/.xine/config");
-	printf("configfile  %s\n", configfile);
-	xine_config_load(xine, configfile);
-	xine_init(xine);
 
 	if((display = XOpenDisplay(getenv("DISPLAY"))) == NULL) {
 		eFatal("XOpenDisplay() failed.\n");
@@ -82,23 +71,9 @@ gXlibDC::gXlibDC() : m_pump(eApp, 1)
 	if(fabs(pixel_aspect - 1.0) < 0.01)
 		pixel_aspect = 1.0;
 
-	if((vo_port = xine_open_video_driver(xine, vo_driver, XINE_VISUAL_TYPE_X11, (void *) &vis)) == NULL)
-	{
-		printf("I'm unable to initialize '%s' video driver. Giving up.\n", vo_driver);
-		return;
-	}
-
-	ao_port     = xine_open_audio_driver(xine , ao_driver, NULL);
-	stream      = xine_stream_new(xine, ao_port, vo_port);
+	xineLib = new cXineLib(&vis);
 
 	setResolution(width, height); // default res
-
-	if((!xine_open(stream, mrl)) || (!xine_play(stream, 0, 0))) {
-		printf("Unable to open MRL !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-		return;
-	}
-
-	vo_port->set_property(vo_port, 0, 1);
 
 	run();
 
@@ -118,14 +93,12 @@ gXlibDC::~gXlibDC()
 	//pushEvent(EV_QUIT);
 	//kill();
 	//SDL_Quit();
-	xine_dispose(stream);
 
-	if (ao_port)
-		xine_close_audio_driver(xine, ao_port);
-	if (vo_port)
-		xine_close_video_driver(xine, vo_port);  
-	xine_exit(xine);
-  
+	if (xineLib) {
+		delete xineLib;
+		xineLib = NULL;
+	}
+
 	XLockDisplay(display);
 	XUnmapWindow(display, window);
 	XDestroyWindow(display, window);
@@ -137,7 +110,7 @@ gXlibDC::~gXlibDC()
 void gXlibDC::keyEvent(const XKeyEvent &event)
 {
 	eXlibInputDriver *driver = eXlibInputDriver::getInstance();
-
+xineLib->getVideoFrameRate();
 	eDebug("SDL Key %s: key=%d", (event.type == KeyPress) ? "Down" : "Up", event.keycode);
 
 	if (driver)
@@ -180,8 +153,7 @@ void gXlibDC::exec(const gOpcode *o)
 	{
 	case gOpcode::flush:
 		eDebug("FLUSH");
-		//stream->osd_renderer->draw_bitmap(osd, (uint8_t*)m_surface.data, 0, 0, 720, 576, temp_bitmap_mapping);
-		stream->osd_renderer->show_scaled(osd, 0);
+		xineLib->showOsd();
 		break;
 	default:
 		gDC::exec(o);
@@ -195,25 +167,19 @@ void gXlibDC::setResolution(int xres, int yres)
 	windowWidth  = width  = xres;
 	windowHeight = height = yres;
 
-	if (osd)
-		stream->osd_renderer->free_object(osd);
-	osd = stream->osd_renderer->new_object (stream->osd_renderer, windowWidth, windowHeight);
-	stream->osd_renderer->set_extent(osd, windowWidth, windowHeight);
-	//stream->osd_renderer->set_video_window(osd, 100, 100, 200, 200);
+	if (argb_buffer)
+		delete [] argb_buffer;
+	argb_buffer = new uint32_t[width*height];
 
-	if (surface)
-		delete [] surface;
-	surface = new uint32_t[xres*yres];
-
-	stream->osd_renderer->set_argb_buffer(osd, (uint32_t*)surface, 0, 0, windowWidth, windowHeight);
+	xineLib->newOsd(windowWidth, windowHeight, argb_buffer);
 
 	m_surface.type = 0;
-	m_surface.x = xres;
-	m_surface.y = yres;
+	m_surface.x = width;
+	m_surface.y = height;
 	m_surface.bpp = 32;
 	m_surface.bypp = 4;
-	m_surface.stride = xres*4;
-	m_surface.data = surface;
+	m_surface.stride = width*4;
+	m_surface.data = argb_buffer;
 	m_surface.offset = 0;
 
 	m_pixmap = new gPixmap(&m_surface);
@@ -249,7 +215,8 @@ void gXlibDC::updateWindowState() {
 		XResizeWindow(display, window, width, height);
 
 	XFlush(display);
-	stream->osd_renderer->show_scaled(osd, 0);
+
+	xineLib->showOsd();
 }
 
 void gXlibDC::fullscreen_switch() {
@@ -320,64 +287,6 @@ void gXlibDC::dest_size_cb(void *data, int video_width, int video_height, double
 	*dest_width        = gXlibDC::width;
 	*dest_height       = gXlibDC::height;
 	*dest_pixel_aspect = gXlibDC::pixel_aspect;
-}
-
-void gXlibDC::videoStart(int pid, int type) {
-	printf("XINE try START !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-	if ( !xine_open(stream, "fifo://tmp/ENIGMA_FIFO") ) {
-	//if ( !xine_open(stream, "fifo://dev/dvb/adapter0/dvr0") ) {
-		printf("Unable to open stream !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-	}
-
-	setStreamType(1);
-	setStreamType(0);
-
-	if( !xine_play(stream, 0, 0) ) {
-		printf("Unable to play stream !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-	}
-	printf("XINE STARTED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-}
-
-void gXlibDC::videoStop(void) {
-	xine_close(stream);
-}
-
-void gXlibDC::setVideoType(int pid, int type) {
-	videoData.pid = pid;
-	videoData.streamtype = type;
-}
-
-void gXlibDC::setAudioType(int pid, int type) {
-	audioData.pid = pid;
-	audioData.streamtype = type;
-}
-
-void gXlibDC::setStreamType(int video) {
-	xine_event_t event;
-
-	if (video) {
-		event.type = XINE_EVENT_SET_VIDEO_STREAMTYPE;
-		event.data = &videoData;
-	} else {
-		event.type = XINE_EVENT_SET_AUDIO_STREAMTYPE;
-		event.data = &audioData;
-	}
-
-	event.data_length = sizeof (xine_streamtype_data_t);
-
-	xine_event_send (stream, &event);
-}
-
-int gXlibDC::getPTS(pts_t &now) {
-	now = xine_get_current_vpts(stream);
-	if (now!=0)
-		return 0;
-	else
-		return -1;
-}
-
-xine_event_queue_t* gXlibDC::create_xine_queue() {
-	return xine_event_new_queue (stream);
 }
 
 eAutoInitPtr<gXlibDC> init_gXlibDC(eAutoInitNumbers::graphic-1, "gXlibDC");

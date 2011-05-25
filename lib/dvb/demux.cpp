@@ -749,24 +749,20 @@ DEFINE_REF(eDVBTSPlayer);
 
 eDVBTSPlayer::eDVBTSPlayer(eDVBDemux *demux): m_demux(demux)
 {
-	printf("eDVBTSPlayer CONSTRUCTOR\n");
 	m_running = 0;
 	m_target_fd = -1;
 	m_thread = new eFilePushThread(IOPRIO_CLASS_RT, 7);
-	//m_thread = new eFilePushThread(IOPRIO_CLASS_BE, 0);
 	CONNECT(m_thread->m_event, eDVBTSPlayer::filepushEvent);
 }
 
 eDVBTSPlayer::~eDVBTSPlayer()
 {
-	printf("eDVBTSPlayer DESTRUCTOR\n");
 	stop();
 	delete m_thread;
 }
 
 RESULT eDVBTSPlayer::start()
 {
-	printf("eDVBTSPlayer start\n");
 	std::map<int,int>::iterator i(m_pids.begin());
 
 	if (m_running)
@@ -817,8 +813,6 @@ RESULT eDVBTSPlayer::start()
 	}
 
 	m_thread->start(m_demux, m_source_fd, m_target_fd);
-
-	printf("eDVBTSPlayer start past\n");
 	return 0;
 }
 
@@ -866,8 +860,6 @@ RESULT eDVBTSPlayer::stop()
 	if (!m_running)
 		return -1;
 
-	printf("workaround for player thread stop\n");
-
 	if (::close(m_source_fd) < 0)
 		perror("DMX_close ERROR");
 	else
@@ -889,7 +881,6 @@ RESULT eDVBTSPlayer::stop()
 
 RESULT eDVBTSPlayer::startPID(int pid)
 {
-	printf("eDVBTSPlayer::startPID %d\n", pid);
 	while(true) {
 		__u16 p = pid;
 		if (::ioctl(m_source_fd, DMX_ADD_PID, &p) < 0) {

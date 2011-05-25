@@ -254,6 +254,10 @@ off_t eRawFile::length()
 
 #define KILOBYTE(n) ((n) * 1024)
 #define MEGABYTE(n) ((n) * 1024LL * 1024LL)
+#define AUDIO_STREAM_S   0xC0
+#define AUDIO_STREAM_E   0xDF
+#define VIDEO_STREAM_S   0xE0
+#define VIDEO_STREAM_E   0xEF
 
 eDecryptRawFile::eDecryptRawFile()
 {
@@ -262,6 +266,7 @@ eDecryptRawFile::eDecryptRawFile()
 	bs_size = dvbcsa_bs_batch_size();
 	delivered=false;
 	lastPacketsCount = 0;
+	stream_correct = false;
 }
 
 eDecryptRawFile::~eDecryptRawFile()
@@ -327,13 +332,38 @@ ssize_t eDecryptRawFile::read(off_t offset, void *buf, size_t count)
 
 	uint8_t *data = getPackets(packetsCount);
 
-	//printf("getPackets(packetsCount) %d\n", packetsCount);
-
+	ret = -EBUSY;
 	if (data && packetsCount>0) {
-		ret = packetsCount*TS_SIZE;
-		memcpy(buf, data, ret);
-	} else
-		ret = EBUSY;
+		if (!stream_correct) {
+			for (int i=0;i<packetsCount;i++) {
+				unsigned char* packet = data+i*TS_SIZE;
+				int adaptation_field_exist = (packet[3]&0x30)>>4;
+				unsigned char* wsk;
+				int len;
+
+				if (adaptation_field_exist==3) {
+					wsk = packet+5+packet[4];
+					len = 183-packet[4];
+				} else {
+					wsk = packet+4;
+					len = 184;
+				}
+
+				if (len>4 && wsk[0]==0 && wsk[1]==0 && wsk[2]==1
+						&& ((wsk[3]>=VIDEO_STREAM_S && wsk[3]<=VIDEO_STREAM_E)
+						|| (wsk[3]>=AUDIO_STREAM_S && wsk[3]<=AUDIO_STREAM_E)) ) {
+					stream_correct = true;
+					printf("-------------------- I have PES ---------------------- %02X\n", wsk[3]);
+					ret = (packetsCount-i)*TS_SIZE;
+					memcpy(buf, packet, (packetsCount-i)*TS_SIZE);
+					break;
+				}
+			}
+          	} else {
+			ret = packetsCount*TS_SIZE;
+			memcpy(buf, data, ret);
+		}
+	}
 
 	return ret;
 }

@@ -5,14 +5,11 @@
 #include <lib/gdi/gmaindc.h>
 #include <lib/dvb/idvb.h>
 
-#include <xine.h>
-#include <xine/xineutils.h>
-#include <xine/xine_internal.h>
-#include <xine/osd.h>
-
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+
+#include <lib/gdi/xineLib.h>
 
 /*#define INPUT_MOTION (ExposureMask | ButtonPressMask | KeyPressMask | \
                       ButtonMotionMask | StructureNotifyMask |        \
@@ -34,19 +31,13 @@ class gXlibDC: public gMainDC, public eThread, public Object
 private:
 	static gXlibDC       *instance;
 
-	xine_t               *xine;
-	char                 configfile[2048];
 	int                  screen;
-	char                 *vo_driver;
-	char                 *ao_driver;
-	osd_object_t         *osd;
-	xine_video_port_t    *vo_port;
-	xine_audio_port_t    *ao_port;
 	x11_visual_t         vis;
-	uint32_t             *surface;
-	gSurface             m_surface;
 	int                  fullscreen;
 	int                  windowWidth, windowHeight;
+	cXineLib            *xineLib;
+	gSurface             m_surface;
+	uint32_t            *argb_buffer;
 
 	void exec(const gOpcode *opcode);
 
@@ -68,11 +59,10 @@ private:
 	void updateWindowState();
 
 public:
-	xine_stream_t        *stream;
-	static int       width, height;
-	static double    pixel_aspect;
-        xine_streamtype_data_t videoData, audioData;
-int a;
+	static int            width, height;
+	static double         pixel_aspect;
+	static Display       *display;
+	static Window         window;
 
 	gXlibDC();
 	virtual ~gXlibDC();
@@ -87,13 +77,6 @@ int a;
 	static void dest_size_cb(void *data, int video_width, int video_height, double video_pixel_aspect,
 			 int *dest_width, int *dest_height, double *dest_pixel_aspect);
 
-	void videoStart(int pid, int type);
-	void videoStop(void);
-	void setVideoType(int pid, int type);
-	void setAudioType(int pid, int type);
-	void setStreamType(int video);
-	int  getPTS(pts_t &now);
-	xine_event_queue_t* create_xine_queue();
 };
 
 #endif

@@ -11,9 +11,6 @@ private:
 #ifdef SWIG
 	~eDVBVolumecontrol();
 #endif
-	int openMixer();
-	void closeMixer(int fd);
-	
 	bool muted;
 	int leftVol, rightVol;
 	

@@ -11,6 +11,7 @@
 #include <lib/dvb/teletext.h>
 #include <lib/dvb/radiotext.h>
 #include <lib/base/filepush.h>
+#include <lib/gdi/xineLib.h>
 
 
 class eStaticServiceDVBInformation;
@@ -289,7 +290,6 @@ protected:
 	ePtr<eConnection> m_rds_decoder_event_connection;
 	void rdsDecoderEvent(int);
 
-	ePtr<eConnection> m_video_event_connection;
 	void video_event(struct iTSMPEGDecoder::videoEvent);
 
 	virtual ePtr<iTsSource> createTsSource(eServiceReferenceDVB &ref);
@@ -297,6 +297,9 @@ protected:
 		/* Live TV */
 	ePtr<iDVBTSPlayer> m_player;
 	int m_fd_dst;
+
+	Connection xine_connection;
+	cXineLib* xineLib;
 };
 
 class eStaticServiceDVBBouquetInformation: public iStaticServiceInformation

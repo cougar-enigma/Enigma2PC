@@ -1,7 +1,7 @@
 #include <lib/base/ebase.h>
 #include <lib/base/eerror.h>
 #include <lib/dvb/decoder.h>
-#include <lib/gdi/gxlibdc.h>
+#include <lib/gdi/xineLib.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -23,7 +23,7 @@ eDVBAudio::eDVBAudio(int dev) : m_dev(dev) {}
 
 int eDVBAudio::startPid(int pid, int type)
 {
-	gXlibDC *xlibDC = gXlibDC::getInstance();
+	cXineLib *xineLib = cXineLib::getInstance();
 
 	int bypass = 0;
 
@@ -52,7 +52,7 @@ int eDVBAudio::startPid(int pid, int type)
 		break;
 	}
 
-	xlibDC->setAudioType(pid, bypass);
+	xineLib->setAudioType(pid, bypass);
 
 	return 0;
 }
@@ -98,9 +98,9 @@ void eDVBAudio::setChannel(int channel)
 
 int eDVBAudio::getPTS(pts_t &now)
 {
-	gXlibDC *xlibDC = gXlibDC::getInstance();
-	if (xlibDC->getPTS(now) < 0)
-		eDebug("AUDIO_GET_PTS failed (%m)");
+	cXineLib *xineLib = cXineLib::getInstance();
+	//if (xineLib->getPTS(now) < 0)
+	//	eDebug("AUDIO_GET_PTS failed (%m)");
 	return 0;
 }
 
@@ -111,12 +111,7 @@ eDVBAudio::~eDVBAudio()
 
 DEFINE_REF(eDVBVideo);
 
-eDVBVideo::eDVBVideo(int dev) : m_dev(dev),
-	m_width(-1), m_height(-1), m_framerate(-1), m_aspect(-1), m_progressive(-1)
-{
-	//m_sn = eSocketNotifier::create(eApp, m_fd, eSocketNotifier::Priority);
-	//CONNECT(m_sn->activated, eDVBVideo::video_event);
-}
+eDVBVideo::eDVBVideo(int dev) : m_dev(dev), m_progressive(-1) {}
 
 // not finally values i think.. !!
 #define VIDEO_STREAMTYPE_MPEG2       0x02
@@ -128,7 +123,7 @@ eDVBVideo::eDVBVideo(int dev) : m_dev(dev),
 
 int eDVBVideo::startPid(int pid, int type)
 {
-	gXlibDC *xlibDC = gXlibDC::getInstance();
+	cXineLib *xineLib = cXineLib::getInstance();
 	int streamtype = VIDEO_STREAMTYPE_MPEG2;
 
 	switch(type)
@@ -155,20 +150,20 @@ int eDVBVideo::startPid(int pid, int type)
 
 	eDebug("VIDEO_SET_STREAMTYPE %d", streamtype);
 
-	xlibDC->setVideoType(pid, streamtype);
+	xineLib->setVideoType(pid, streamtype);
 
 	freeze();  // why freeze here?!? this is a problem when only a pid change is requested... because of the unfreeze logic in 
 	eDebug("VIDEO_PLAY\n");
 
-	xlibDC->videoStart(pid, type);
+	xineLib->playVideo();
 
 	return 0;
 }
 
 void eDVBVideo::stop()
 {
-	gXlibDC *xlibDC = gXlibDC::getInstance();
-	xlibDC->videoStop();
+	cXineLib *xineLib = cXineLib::getInstance();
+	xineLib->stopVideo();
 }
 
 void eDVBVideo::flush()
@@ -204,8 +199,10 @@ int eDVBVideo::setFastForward(int skip)
 
 int eDVBVideo::getPTS(pts_t &now)
 {
-	gXlibDC *xlibDC = gXlibDC::getInstance();
-	int ret = xlibDC->getPTS(now);
+	cXineLib *xineLib = cXineLib::getInstance();
+
+	int ret = 0;//xineLib->getPTS(now);
+	now = 0;
 
 	if (ret < 0)
 		eDebug("VIDEO_GET_PTS failed(%m)");
@@ -223,16 +220,6 @@ void eDVBVideo::video_event(int)
 		eDebug("failed (%m)");
 	else
 	{
-		eDebug("ok");
-		if (evt.type == VIDEO_EVENT_SIZE_CHANGED)
-		{
-			struct iTSMPEGDecoder::videoEvent event;
-			event.type = iTSMPEGDecoder::videoEvent::eventSizeChanged;
-			m_aspect = event.aspect = evt.u.size.aspect_ratio == 0 ? 2 : 3;  // convert dvb api to etsi
-			m_height = event.height = evt.u.size.h;
-			m_width = event.width = evt.u.size.w;
-			/* emit */ m_event(event);
-		}
 		else if (evt.type == VIDEO_EVENT_FRAME_RATE_CHANGED)
 		{
 			struct iTSMPEGDecoder::videoEvent event;
@@ -251,97 +238,6 @@ void eDVBVideo::video_event(int)
 			eDebug("unhandled DVBAPI Video Event %d", evt.type);
 	}
 #endif
-}
-
-RESULT eDVBVideo::connectEvent(const Slot1<void, struct iTSMPEGDecoder::videoEvent> &event, ePtr<eConnection> &conn)
-{
-	conn = new eConnection(this, m_event.connect(event));
-	return 0;
-}
-
-static int readMpegProc(const char *str, int decoder)
-{
-	int val = -1;
-	char tmp[64];
-	sprintf(tmp, "/proc/stb/vmpeg/%d/%s", decoder, str);
-	FILE *f = fopen(tmp, "r");
-	if (f)
-	{
-		fscanf(f, "%x", &val);
-		fclose(f);
-	}
-	return val;
-}
-
-static int readApiSize(int fd, int &xres, int &yres, int &aspect)
-{
-	video_size_t size;
-	if (!::ioctl(fd, VIDEO_GET_SIZE, &size))
-	{
-		xres = size.w;
-		yres = size.h;
-		aspect = size.aspect_ratio == 0 ? 2 : 3;  // convert dvb api to etsi
-		return 0;
-	}
-//	eDebug("VIDEO_GET_SIZE failed (%m)");
-
-	return -1;
-}
-
-static int readApiFrameRate(int fd, int &framerate)
-{
-	unsigned int frate;
-	if (!::ioctl(fd, VIDEO_GET_FRAME_RATE, &frate))
-	{
-		framerate = frate;	
-		return 0;
-	}
-//	eDebug("VIDEO_GET_FRAME_RATE failed (%m)");
-
-	return -1;
-}
-
-int eDVBVideo::getWidth()
-{
-	if (m_width == -1)
-		readApiSize(m_fd, m_width, m_height, m_aspect);
-	if (m_width == -1)
-		m_width = readMpegProc("xres", m_dev);
-	return m_width;
-}
-
-int eDVBVideo::getHeight()
-{
-	if (m_height == -1)
-		readApiSize(m_fd, m_width, m_height, m_aspect);
-	if (m_height == -1)
-		m_height = readMpegProc("yres", m_dev);
-	return m_height;
-}
-
-int eDVBVideo::getAspect()
-{
-	if (m_aspect == -1)
-		readApiSize(m_fd, m_width, m_height, m_aspect);
-	if (m_aspect == -1)
-		m_aspect = readMpegProc("aspect", m_dev);
-	return m_aspect;
-}
-
-int eDVBVideo::getProgressive()
-{
-	if (m_progressive == -1)
-		m_progressive = readMpegProc("progressive", m_dev);
-	return m_progressive;
-}
-
-int eDVBVideo::getFrameRate()
-{
-	if (m_framerate == -1)
-		readApiFrameRate(m_fd, m_framerate);
-	if (m_framerate == -1)
-		m_framerate = readMpegProc("framerate", m_dev);
-	return m_framerate;
 }
 
 DEFINE_REF(eDVBPCR);
@@ -411,7 +307,6 @@ int eTSMPEGDecoder::setState()
 		{
 			m_video->stop();
 			m_video = 0;
-			m_video_event_conn = 0;
 		}
 	}
 	if (m_changed & changeAudio)
@@ -451,7 +346,6 @@ int eTSMPEGDecoder::setState()
 		if ((m_vpid >= 0) && (m_vpid < 0x1FFF))
 		{
 			m_video = new eDVBVideo(m_decoder);
-			m_video->connectEvent(slot(*this, &eTSMPEGDecoder::video_event), m_video_event_conn);
 			if (m_video->startPid(m_vpid, m_vtype))
 				res = -1;
 		}
@@ -556,8 +450,6 @@ eTSMPEGDecoder::eTSMPEGDecoder(int decoder)
 	: m_vpid(-1), m_vtype(-1), m_apid(-1), m_atype(-1), m_pcrpid(-1), m_textpid(-1),
 	  m_changed(0), m_decoder(decoder), m_video_clip_fd(-1), m_showSinglePicTimer(eTimer::create(eApp))
 {
-printf("eTSMPEGDecoder CONSTRUCTOR %d\n", decoder);
-	//demux->connectEvent(slot(*this, &eTSMPEGDecoder::demux_event), m_demux_event_conn);
 	CONNECT(m_showSinglePicTimer->timeout, eTSMPEGDecoder::finishShowSinglePic);
 	m_state = stateStop;
 }
@@ -717,18 +609,6 @@ RESULT eTSMPEGDecoder::flush()
 	return 0;
 }
 
-void eTSMPEGDecoder::demux_event(int event)
-{
-	switch (event)
-	{
-	case eDVBDemux::evtFlush:
-		flush();
-		break;
-	default:
-		break;
-	}
-}
-
 RESULT eTSMPEGDecoder::getPTS(int what, pts_t &pts)
 {
 	if (what == 0) /* auto */
@@ -840,42 +720,3 @@ RESULT eTSMPEGDecoder::connectVideoEvent(const Slot1<void, struct videoEvent> &e
 	return 0;
 }
 
-void eTSMPEGDecoder::video_event(struct videoEvent event)
-{
-	/* emit */ m_video_event(event);
-}
-
-int eTSMPEGDecoder::getVideoWidth()
-{
-	if (m_video)
-		return m_video->getWidth();
-	return -1;
-}
-
-int eTSMPEGDecoder::getVideoHeight()
-{
-	if (m_video)
-		return m_video->getHeight();
-	return -1;
-}
-
-int eTSMPEGDecoder::getVideoProgressive()
-{
-	if (m_video)
-		return m_video->getProgressive();
-	return -1;
-}
-
-int eTSMPEGDecoder::getVideoFrameRate()
-{
-	if (m_video)
-		return m_video->getFrameRate();
-	return -1;
-}
-
-int eTSMPEGDecoder::getVideoAspect()
-{
-	if (m_video)
-		return m_video->getAspect();
-	return -1;
-}

@@ -21,6 +21,8 @@ libsigc++-1.2-dev
 libtool
 libxml2-dev
 libxslt1-dev
+libnl2
+libnl2-dev
 python-dev
 swig
 
@@ -61,9 +63,10 @@ make install
 
 git clone git://projects.vdr-developer.org/xine-lib.git
 cd xine-lib
-git checkout remotes/origin/df-osd-handling
-./autogen.sh --disable-xinerama --prefix=/usr
-# apply patch xine_enigma2.patch from patches/ directory
+git checkout df-osd-handling+alter-vdpau-h264-decoder
+./autogen.sh --disable-xinerama --disable-musepack --prefix=/usr
+# apply patch Changes-for-enigma-branch-new_xine_plugin.patch from 'patches' directory
+git apply path_to_file/Changes-for-enigma-branch-new_xine_plugin.patch
 make
 make install
 
@@ -71,6 +74,7 @@ make install
 
 git clone git://github.com/cougar-enigma/Enigma2PC.git
 cd enigma2
+git checkout new_xine_plugin
 autoreconf -i
 ./configure --prefix=/usr/local --with-xlib
 make

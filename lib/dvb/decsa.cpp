@@ -68,12 +68,12 @@ bool cDeCSA::SetDescr(ca_descr_t *ca_descr, bool initial)
       if(flags[idx] & (ca_descr->parity?FL_ODD_GOOD:FL_EVEN_GOOD)) {
         printf("adapter%d/demux%d idx %d: %s key in use (%d ms)", adapter, demux ,idx,ca_descr->parity?"odd":"even",MAX_REL_WAIT);
         if(wait.TimedWait(mutex,MAX_REL_WAIT))
-          printf("adapter%d/demux%d idx %d: successfully waited for release", adapter, demux, idx);
+          printf("adapter%d/demux%d idx %d: successfully waited for release\n", adapter, demux, idx);
         else
-          printf("adapter%d/demux%d idx %d: timed out. setting anyways", adapter, demux, idx);
+          printf("adapter%d/demux%d idx %d: timed out. setting anyways\n", adapter, demux, idx);
       }
       else
-        printf("adapter%d/demux%d idx %d: late key set...", adapter, demux, idx);
+        printf("adapter%d/demux%d idx %d: late key set...\n", adapter, demux, idx);
     }
     if(ca_descr->parity==0) {
       dvbcsa_bs_key_set(ca_descr->cw, csa_bs_key_even[idx]);
@@ -183,9 +183,10 @@ bool cDeCSA::Decrypt(unsigned char *data, int len, int& packetsCount)
         pcks[cryptedPackets].data = data+l+5+data[l+4];
         pcks[cryptedPackets].len = 183-data[l+4];
       }
-      data[l+3] &= 0x3F;
       cryptedPackets++;
     }
+
+    data[l+3] &= 0x3F;
     packets++;
   }
 

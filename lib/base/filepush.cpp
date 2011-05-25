@@ -1,6 +1,6 @@
 #include <lib/base/filepush.h>
 #include <lib/base/eerror.h>
-#include <lib/gdi/gxlibdc.h>
+#include <lib/gdi/xineLib.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -46,8 +46,7 @@ void eFilePushThread::thread()
 	act.sa_flags = 0;
 	sigaction(SIGUSR1, &act, 0);
 	
-	gXlibDC *xlibDC = gXlibDC::getInstance();
-	xine_event_queue_t* xine_queue = xlibDC->create_xine_queue();
+	cXineLib *xineLib = cXineLib::getInstance();
 
 	hasStarted();
 
@@ -205,7 +204,7 @@ void eFilePushThread::thread()
 				   over and over until somebody responds.
 				   
 				   in stream_mode, think of evtEOF as "buffer underrun occured". */
-			xine_event_t *event;
+			/*xine_event_t *event;
 			while ( (event=xine_event_get(xine_queue)) != NULL ) {
 				if (event->type==XINE_EVENT_NBC_STATS) {
 					xine_nbc_stats_data_t* stats = (xine_nbc_stats_data_t*)event->data;
@@ -215,7 +214,9 @@ void eFilePushThread::thread()
 				}
 
 				xine_event_free(event);
-			}
+			}*/
+			if (xineLib->end_of_stream == true)
+				sendEvent(evtEOF);
 
 			if (m_stream_mode)
 			{
@@ -235,7 +236,6 @@ void eFilePushThread::thread()
 	}
 	fdatasync(m_fd_dest);
 
-	xine_event_dispose_queue(xine_queue);
 	eDebug("FILEPUSH THREAD STOP");
 }
 

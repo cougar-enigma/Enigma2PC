@@ -1873,9 +1873,6 @@ RESULT eDVBChannel::getLength(pts_t &len)
 
 RESULT eDVBChannel::getCurrentPosition(iDVBDemux *decoding_demux, pts_t &pos, int mode)
 {
-	if (!decoding_demux)
-		return -1;
-
 	pts_t now;
 
 	int r;

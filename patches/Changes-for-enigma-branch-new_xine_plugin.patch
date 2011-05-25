@@ -1,0 +1,1356 @@
+From 02ef958079a419bcac19d3e219fdf3cde36e10df Mon Sep 17 00:00:00 2001
+From: cougar <cougar.enigma@gmail.com>
+Date: Wed, 25 May 2011 13:42:14 +0000
+Subject: [PATCH] Changes for enigma - branch new_xine_plugin.
+
+---
+ include/xine.h                        |   16 ++
+ include/xine/audio_decoder.h          |   12 +-
+ include/xine/broadcaster.h            |    4 +-
+ include/xine/demux.h                  |   22 +-
+ include/xine/input_plugin.h           |   38 ++--
+ include/xine/osd.h                    |    8 +-
+ include/xine/scratch.h                |    6 +-
+ include/xine/spu_decoder.h            |   14 +-
+ include/xine/video_decoder.h          |   14 +-
+ include/xine/video_out.h              |    3 +-
+ include/xine/xine_internal.h          |    2 +-
+ src/demuxers/demux_ts.c               |  111 ++--------
+ src/input/Makefile.am                 |    6 +-
+ src/input/input_enigma.c              |  384 +++++++++++++++++++++++++++++++++
+ src/input/net_buf_ctrl.c              |   14 ++-
+ src/video_dec/libvdpau/vdpau_h264.c   |    2 +-
+ src/video_dec/libvdpau/vdpau_mpeg12.c |    2 +-
+ src/video_dec/libvdpau/vdpau_mpeg4.c  |    2 +-
+ src/video_dec/libvdpau/vdpau_vc1.c    |    2 +-
+ src/video_out/video_out_vdpau.c       |    9 +-
+ src/xine-engine/osd.c                 |    5 +
+ src/xine-engine/video_out.c           |   26 +++-
+ src/xine-engine/xine_interface.c      |    4 +
+ 23 files changed, 552 insertions(+), 154 deletions(-)
+ create mode 100644 src/input/input_enigma.c
+
+diff --git a/include/xine.h b/include/xine.h
+index fdd981c..920762e 100644
+--- a/include/xine.h
++++ b/include/xine.h
+@@ -1743,6 +1743,7 @@ void xine_config_reset (xine_t *self) XINE_PROTECTED;
+ #define XINE_EVENT_MRL_REFERENCE_EXT     13 /* demuxer->frontend: MRL reference(s) for the real stream */
+ #define XINE_EVENT_AUDIO_AMP_LEVEL       14 /* report current audio amp level (l/r/mute) */
+ #define XINE_EVENT_NBC_STATS             15 /* nbc buffer status */
++#define XINE_EVENT_FRAMERATE_CHANGE      16
+ 
+ 
+ /* input events coming from frontend */
+@@ -1834,6 +1835,9 @@ void xine_config_reset (xine_t *self) XINE_PROTECTED;
+ /* events generated from post plugins */
+ #define XINE_EVENT_POST_TVTIME_FILMMODE_CHANGE   400
+ 
++#define XINE_EVENT_SET_VIDEO_STREAMTYPE 501
++#define XINE_EVENT_SET_AUDIO_STREAMTYPE 502
++
+ /*
+  * xine event struct
+  */
+@@ -1867,6 +1871,12 @@ typedef struct {
+   char                str[256]; /* might be longer */
+ } xine_ui_data_t;
+ 
++
++typedef struct {
++  int                 pid;
++  int                 streamtype;
++} xine_streamtype_data_t;
++
+ /*
+  * Send messages to UI. used mostly to report errors.
+  */
+@@ -1945,6 +1955,11 @@ typedef struct {
+   int                 type;         /* 0=buffer put, 1=buffer get */
+ } xine_nbc_stats_data_t;
+ 
++
++typedef struct {
++  int64_t             framerate;
++} xine_framerate_data_t;
++
+ /*
+  * mrl reference data is sent by demuxers when a reference stream is found.
+  * this stream just contains pointers (urls) to the real data, which are
+@@ -2235,6 +2250,7 @@ void        xine_osd_set_encoding(xine_osd_t *self, const char *encoding) XINE_P
+ void        xine_osd_set_position  (xine_osd_t *self, int x, int y) XINE_PROTECTED;
+ void        xine_osd_show          (xine_osd_t *self, int64_t vpts) XINE_PROTECTED;
+ void        xine_osd_show_unscaled (xine_osd_t *self, int64_t vpts) XINE_PROTECTED;
++void        xine_osd_show_scaled   (xine_osd_t *self, int64_t vpts) XINE_PROTECTED;
+ void        xine_osd_hide          (xine_osd_t *self, int64_t vpts) XINE_PROTECTED;
+ /* empty drawing area */
+ void        xine_osd_clear         (xine_osd_t *self) XINE_PROTECTED;
+diff --git a/include/xine/audio_decoder.h b/include/xine/audio_decoder.h
+index a37967e..0d99679 100644
+--- a/include/xine/audio_decoder.h
++++ b/include/xine/audio_decoder.h
+@@ -44,7 +44,7 @@ struct audio_decoder_class_s {
+   /*
+    * open a new instance of this plugin class
+    */
+-  audio_decoder_t* (*open_plugin) (audio_decoder_class_t *this, xine_stream_t *stream);
++  audio_decoder_t* (*open_plugin) (audio_decoder_class_t *self, xine_stream_t *stream);
+ 
+   /**
+    * @brief short human readable identifier for this plugin class
+@@ -67,7 +67,7 @@ struct audio_decoder_class_s {
+    * free all class-related resources
+    */
+ 
+-  void (*dispose) (audio_decoder_class_t *this);
++  void (*dispose) (audio_decoder_class_t *self);
+ };
+ 
+ #define default_audio_decoder_class_dispose (void (*) (audio_decoder_class_t *this))free
+@@ -78,24 +78,24 @@ struct audio_decoder_s {
+    * decode data from buf and feed decoded samples to
+    * audio output
+    */
+-  void (*decode_data) (audio_decoder_t *this, buf_element_t *buf);
++  void (*decode_data) (audio_decoder_t *self, buf_element_t *buf);
+ 
+   /*
+    * reset decoder after engine flush (prepare for new
+    * audio data not related to recently decoded data)
+    */
+-  void (*reset) (audio_decoder_t *this);
++  void (*reset) (audio_decoder_t *self);
+ 
+   /*
+    * inform decoder that a time reference discontinuity has happened.
+    * that is, it must forget any currently held pts value
+    */
+-  void (*discontinuity) (audio_decoder_t *this);
++  void (*discontinuity) (audio_decoder_t *self);
+ 
+   /*
+    * close down, free all resources
+    */
+-  void (*dispose) (audio_decoder_t *this);
++  void (*dispose) (audio_decoder_t *self);
+ 
+   /**
+    * @brief Pointer to the loaded plugin node.
+diff --git a/include/xine/broadcaster.h b/include/xine/broadcaster.h
+index 0cd416c..0d79dee 100644
+--- a/include/xine/broadcaster.h
++++ b/include/xine/broadcaster.h
+@@ -30,8 +30,8 @@ extern "C" {
+ typedef struct broadcaster_s broadcaster_t;
+ 
+ broadcaster_t *_x_init_broadcaster(xine_stream_t *stream, int port) XINE_MALLOC XINE_PROTECTED;
+-void _x_close_broadcaster(broadcaster_t *this) XINE_PROTECTED;
+-int _x_get_broadcaster_port(broadcaster_t *this) XINE_PROTECTED;
++void _x_close_broadcaster(broadcaster_t *self) XINE_PROTECTED;
++int _x_get_broadcaster_port(broadcaster_t *self) XINE_PROTECTED;
+ 
+ 
+ #ifdef __cplusplus
+diff --git a/include/xine/demux.h b/include/xine/demux.h
+index 2803c30..b18c525 100644
+--- a/include/xine/demux.h
++++ b/include/xine/demux.h
+@@ -49,7 +49,7 @@ struct demux_class_s {
+   /*
+    * open a new instance of this plugin class
+    */
+-  demux_plugin_t* (*open_plugin) (demux_class_t *this, xine_stream_t *stream, input_plugin_t *input);
++  demux_plugin_t* (*open_plugin) (demux_class_t *self, xine_stream_t *stream, input_plugin_t *input);
+ 
+   /**
+    * @brief short human readable identifier for this plugin class
+@@ -85,7 +85,7 @@ struct demux_class_s {
+   /*
+    * close down, free all resources
+    */
+-  void (*dispose) (demux_class_t *this);
++  void (*dispose) (demux_class_t *self);
+ };
+ 
+ #define default_demux_class_dispose (void (*) (demux_class_t *this))free
+@@ -101,7 +101,7 @@ struct demux_plugin_s {
+    * fifos, then return. do not start demux thread (yet)
+    */
+ 
+-  void (*send_headers) (demux_plugin_t *this);
++  void (*send_headers) (demux_plugin_t *self);
+ 
+   /*
+    * ask demux to seek
+@@ -122,7 +122,7 @@ struct demux_plugin_s {
+    *                           starting the demuxer)
+    */
+ 
+-  int (*seek) (demux_plugin_t *this,
++  int (*seek) (demux_plugin_t *self,
+ 	       off_t start_pos, int start_time, int playing );
+ 
+   /*
+@@ -135,37 +135,37 @@ struct demux_plugin_s {
+    * the demux current status
+    */
+ 
+-  int (*send_chunk) (demux_plugin_t *this);
++  int (*send_chunk) (demux_plugin_t *self);
+ 
+   /*
+    * free resources
+    */
+ 
+-  void (*dispose) (demux_plugin_t *this) ;
++  void (*dispose) (demux_plugin_t *self) ;
+ 
+   /*
+    * returns DEMUX_OK or  DEMUX_FINISHED
+    */
+ 
+-  int (*get_status) (demux_plugin_t *this) ;
++  int (*get_status) (demux_plugin_t *self) ;
+ 
+   /*
+    * gets stream length in miliseconds (might be estimated)
+    * may return 0 for non-seekable streams
+    */
+ 
+-  int (*get_stream_length) (demux_plugin_t *this);
++  int (*get_stream_length) (demux_plugin_t *self);
+ 
+   /*
+    * return capabilities of demuxed stream
+    */
+ 
+-  uint32_t (*get_capabilities) (demux_plugin_t *this);
++  uint32_t (*get_capabilities) (demux_plugin_t *self);
+ 
+   /*
+    * request optional data from input plugin.
+    */
+-  int (*get_optional_data) (demux_plugin_t *this, void *data, int data_type);
++  int (*get_optional_data) (demux_plugin_t *self, void *data, int data_type);
+ 
+   /*
+    * "backwards" link to plugin class
+@@ -186,7 +186,7 @@ struct demux_plugin_s {
+ #endif
+ } ;
+ 
+-#define default_demux_plugin_dispose (void (*) (demux_plugin_t *this))free
++#define default_demux_plugin_dispose (void (*) (demux_plugin_t *self))free
+ 
+ /*
+  * possible capabilites a demux plugin can have:
+diff --git a/include/xine/input_plugin.h b/include/xine/input_plugin.h
+index 1d2e0bb..4bc01d9 100644
+--- a/include/xine/input_plugin.h
++++ b/include/xine/input_plugin.h
+@@ -43,7 +43,7 @@ struct input_class_s {
+    * create a new instance of this plugin class
+    * return NULL if the plugin does'nt handle the given mrl
+    */
+-  input_plugin_t* (*get_instance) (input_class_t *this, xine_stream_t *stream, const char *mrl);
++  input_plugin_t* (*get_instance) (input_class_t *self, xine_stream_t *stream, const char *mrl);
+ 
+   /**
+    * @brief short human readable identifier for this plugin class
+@@ -66,28 +66,28 @@ struct input_class_s {
+    * ls function, optional: may be NULL
+    * return value: NULL => filename is a file, **char=> filename is a dir
+    */
+-  xine_mrl_t ** (*get_dir) (input_class_t *this, const char *filename, int *nFiles);
++  xine_mrl_t ** (*get_dir) (input_class_t *self, const char *filename, int *nFiles);
+ 
+   /*
+    * generate autoplay list, optional: may be NULL
+    * return value: list of MRLs
+    */
+-  char ** (*get_autoplay_list) (input_class_t *this, int *num_files);
++  char ** (*get_autoplay_list) (input_class_t *self, int *num_files);
+ 
+   /*
+    * close down, free all resources
+    */
+-  void (*dispose) (input_class_t *this);
++  void (*dispose) (input_class_t *self);
+ 
+   /*
+    * eject/load the media (if possible), optional: may be NULL
+    *
+    * returns 0 for temporary failures
+    */
+-  int (*eject_media) (input_class_t *this);
++  int (*eject_media) (input_class_t *self);
+ };
+ 
+-#define default_input_class_dispose (void (*) (input_class_t *this))free
++#define default_input_class_dispose (void (*) (input_class_t *self))free
+ 
+ struct input_plugin_s {
+ 
+@@ -95,7 +95,7 @@ struct input_plugin_s {
+    * open the stream
+    * return 0 if an error occured
+    */
+-  int (*open) (input_plugin_t *this);
++  int (*open) (input_plugin_t *self);
+ 
+   /*
+    * return capabilities of the current playable entity. See
+@@ -113,14 +113,14 @@ struct input_plugin_s {
+    * make a best-effort attempt to seek, e.g. at least
+    * relative forward seeking should work.
+    */
+-  uint32_t (*get_capabilities) (input_plugin_t *this);
++  uint32_t (*get_capabilities) (input_plugin_t *self);
+ 
+   /*
+    * read nlen bytes, return number of bytes read
+    * Should block until some bytes available for read;
+    * a return value of 0 indicates no data available
+    */
+-  off_t (*read) (input_plugin_t *this, void *buf, off_t nlen);
++  off_t (*read) (input_plugin_t *self, void *buf, off_t nlen);
+ 
+ 
+   /*
+@@ -128,7 +128,7 @@ struct input_plugin_s {
+    * for blocked input sources len must be == blocksize
+    * the fifo parameter is only used to get access to the buffer_pool_alloc function
+    */
+-  buf_element_t *(*read_block)(input_plugin_t *this, fifo_buffer_t *fifo, off_t len);
++  buf_element_t *(*read_block)(input_plugin_t *self, fifo_buffer_t *fifo, off_t len);
+ 
+ 
+   /*
+@@ -136,7 +136,7 @@ struct input_plugin_s {
+    *
+    * if seeking failed, -1 is returned
+    */
+-  off_t (*seek) (input_plugin_t *this, off_t offset, int origin);
++  off_t (*seek) (input_plugin_t *self, off_t offset, int origin);
+ 
+ 
+   /*
+@@ -148,14 +148,14 @@ struct input_plugin_s {
+    * note: only SEEK_SET (0) is currently supported as origin
+    * note: may be NULL is not supported
+    */
+-  off_t (*seek_time) (input_plugin_t *this, int time_offset, int origin);
++  off_t (*seek_time) (input_plugin_t *self, int time_offset, int origin);
+ 
+ 
+   /*
+    * get current position in stream.
+    *
+    */
+-  off_t (*get_current_pos) (input_plugin_t *this);
++  off_t (*get_current_pos) (input_plugin_t *self);
+ 
+ 
+   /*
+@@ -163,7 +163,7 @@ struct input_plugin_s {
+    *
+    * note: may be NULL is not supported
+    */
+-  int (*get_current_time) (input_plugin_t *this);
++  int (*get_current_time) (input_plugin_t *self);
+ 
+ 
+   /*
+@@ -183,7 +183,7 @@ struct input_plugin_s {
+    * absolute or relative play position or possibly calculating the
+    * bit rate.
+    */
+-  off_t (*get_length) (input_plugin_t *this);
++  off_t (*get_length) (input_plugin_t *self);
+ 
+ 
+   /*
+@@ -199,25 +199,25 @@ struct input_plugin_s {
+    * make this function simply return 0 if unsure.
+    */
+ 
+-  uint32_t (*get_blocksize) (input_plugin_t *this);
++  uint32_t (*get_blocksize) (input_plugin_t *self);
+ 
+ 
+   /*
+    * return current MRL
+    */
+-  const char * (*get_mrl) (input_plugin_t *this);
++  const char * (*get_mrl) (input_plugin_t *self);
+ 
+ 
+   /*
+    * request optional data from input plugin.
+    */
+-  int (*get_optional_data) (input_plugin_t *this, void *data, int data_type);
++  int (*get_optional_data) (input_plugin_t *self, void *data, int data_type);
+ 
+ 
+   /*
+    * close stream, free instance resources
+    */
+-  void (*dispose) (input_plugin_t *this);
++  void (*dispose) (input_plugin_t *self);
+ 
+   /*
+    * "backward" link to input plugin class struct
+diff --git a/include/xine/osd.h b/include/xine/osd.h
+index 4447153..557aa8e 100644
+--- a/include/xine/osd.h
++++ b/include/xine/osd.h
+@@ -91,7 +91,7 @@ struct osd_renderer_s {
+    * A default palette is initialized (i sugest keeping color 0 as transparent
+    * for the sake of simplicity)
+    */
+-  osd_object_t* (*new_object) (osd_renderer_t *this, int width, int height);
++  osd_object_t* (*new_object) (osd_renderer_t *self, int width, int height);
+ 
+   /*
+    * free osd object
+@@ -194,7 +194,7 @@ struct osd_renderer_s {
+    * loaded fonts are unloaded
+    * osd objects are closed
+    */
+-  void (*close) (osd_renderer_t *this);
++  void (*close) (osd_renderer_t *self);
+ 
+   /*
+    * clear an osd object (empty drawing area)
+@@ -215,6 +215,10 @@ struct osd_renderer_s {
+    */
+   int (*show_unscaled) (osd_object_t *osd, int64_t vpts );
+ 
++
++
++  int (*show_scaled) (osd_object_t *osd, int64_t vpts );
++
+   /*
+    * see xine.h for defined XINE_OSD_CAP_ values.
+    */
+diff --git a/include/xine/scratch.h b/include/xine/scratch.h
+index c0c927b..279aa73 100644
+--- a/include/xine/scratch.h
++++ b/include/xine/scratch.h
+@@ -33,11 +33,11 @@ typedef struct scratch_buffer_s scratch_buffer_t;
+ struct scratch_buffer_s {
+ 
+   void         XINE_FORMAT_PRINTF(2, 0)
+-               (*scratch_printf) (scratch_buffer_t *this, const char *format, va_list ap);
++               (*scratch_printf) (scratch_buffer_t *self, const char *format, va_list ap);
+ 
+-  char       **(*get_content) (scratch_buffer_t *this);
++  char       **(*get_content) (scratch_buffer_t *self);
+ 
+-  void         (*dispose) (scratch_buffer_t *this);
++  void         (*dispose) (scratch_buffer_t *self);
+ 
+   char         **lines;
+   char         **ordered;
+diff --git a/include/xine/spu_decoder.h b/include/xine/spu_decoder.h
+index 9ab926b..8371716 100644
+--- a/include/xine/spu_decoder.h
++++ b/include/xine/spu_decoder.h
+@@ -45,7 +45,7 @@ struct spu_decoder_class_s {
+   /*
+    * open a new instance of this plugin class
+    */
+-  spu_decoder_t* (*open_plugin) (spu_decoder_class_t *this, xine_stream_t *stream);
++  spu_decoder_t* (*open_plugin) (spu_decoder_class_t *self, xine_stream_t *stream);
+ 
+   /**
+    * @brief short human readable identifier for this plugin class
+@@ -67,7 +67,7 @@ struct spu_decoder_class_s {
+   /*
+    * free all class-related resources
+    */
+-  void (*dispose) (spu_decoder_class_t *this);
++  void (*dispose) (spu_decoder_class_t *self);
+ };
+ 
+ #define default_spu_decoder_class_dispose (void (*) (spu_decoder_class_t *this))free
+@@ -77,24 +77,24 @@ struct spu_decoder_s {
+   /*
+    * decode data from buf and feed the overlay to overlay manager
+    */
+-  void (*decode_data) (spu_decoder_t *this, buf_element_t *buf);
++  void (*decode_data) (spu_decoder_t *self, buf_element_t *buf);
+ 
+   /*
+    * reset decoder after engine flush (prepare for new
+    * SPU data not related to recently decoded data)
+    */
+-  void (*reset) (spu_decoder_t *this);
++  void (*reset) (spu_decoder_t *self);
+ 
+   /*
+    * inform decoder that a time reference discontinuity has happened.
+    * that is, it must forget any currently held pts value
+    */
+-  void (*discontinuity) (spu_decoder_t *this);
++  void (*discontinuity) (spu_decoder_t *self);
+ 
+   /*
+    * close down, free all resources
+    */
+-  void (*dispose) (spu_decoder_t *this);
++  void (*dispose) (spu_decoder_t *self);
+ 
+   /*
+    * When the SPU decoder also handles data used in user interaction,
+@@ -106,7 +106,7 @@ struct spu_decoder_s {
+    * This function pointer may be NULL, if the plugin does not have
+    * such functionality.
+    */
+-  int  (*get_interact_info) (spu_decoder_t *this, void *data);
++  int  (*get_interact_info) (spu_decoder_t *self, void *data);
+ 
+   /*
+    * When the SPU decoder also handles menu overlays for user inter-
+diff --git a/include/xine/video_decoder.h b/include/xine/video_decoder.h
+index faf7eac..ca7b1b9 100644
+--- a/include/xine/video_decoder.h
++++ b/include/xine/video_decoder.h
+@@ -45,7 +45,7 @@ struct video_decoder_class_s {
+   /*
+    * open a new instance of this plugin class
+    */
+-  video_decoder_t* (*open_plugin) (video_decoder_class_t *this, xine_stream_t *stream);
++  video_decoder_t* (*open_plugin) (video_decoder_class_t *self, xine_stream_t *stream);
+ 
+   /**
+    * @brief short human readable identifier for this plugin class
+@@ -67,7 +67,7 @@ struct video_decoder_class_s {
+   /*
+    * free all class-related resources
+    */
+-  void (*dispose) (video_decoder_class_t *this);
++  void (*dispose) (video_decoder_class_t *self);
+ };
+ 
+ #define default_video_decoder_class_dispose (void (*) (video_decoder_class_t *this))free
+@@ -78,29 +78,29 @@ struct video_decoder_s {
+    * decode data from buf and feed decoded frames to
+    * video output
+    */
+-  void (*decode_data) (video_decoder_t *this, buf_element_t *buf);
++  void (*decode_data) (video_decoder_t *self, buf_element_t *buf);
+ 
+   /*
+    * reset decoder after engine flush (prepare for new
+    * video data not related to recently decoded data)
+    */
+-  void (*reset) (video_decoder_t *this);
++  void (*reset) (video_decoder_t *self);
+ 
+   /*
+    * inform decoder that a time reference discontinuity has happened.
+    * that is, it must forget any currently held pts value
+    */
+-  void (*discontinuity) (video_decoder_t *this);
++  void (*discontinuity) (video_decoder_t *self);
+ 
+   /*
+    * flush out any frames that are still stored in the decoder
+    */
+-  void (*flush) (video_decoder_t *this);
++  void (*flush) (video_decoder_t *self);
+ 
+   /*
+    * close down, free all resources
+    */
+-  void (*dispose) (video_decoder_t *this);
++  void (*dispose) (video_decoder_t *self);
+ 
+   /**
+    * @brief Pointer to the loaded plugin node.
+diff --git a/include/xine/video_out.h b/include/xine/video_out.h
+index 5a04011..54204b7 100644
+--- a/include/xine/video_out.h
++++ b/include/xine/video_out.h
+@@ -266,7 +266,8 @@ struct xine_video_port_s {
+ #define VO_PROP_NOISE_REDUCTION       25
+ #define VO_PROP_BUFS_TOTAL            26 /* read-only */
+ #define VO_PROP_BUFS_FREE             27 /* read-only */
+-#define VO_NUM_PROPERTIES             28
++#define VO_PROP_LAST_PTS              28
++#define VO_NUM_PROPERTIES             29
+ 
+ /* number of colors in the overlay palette. Currently limited to 256
+    at most, because some alphablend functions use an 8-bit index into
+diff --git a/include/xine/xine_internal.h b/include/xine/xine_internal.h
+index 7064539..b296b45 100644
+--- a/include/xine/xine_internal.h
++++ b/include/xine/xine_internal.h
+@@ -484,7 +484,7 @@ int              _x_decoder_available  (xine_t *xine, uint32_t buftype) XINE_PRO
+  * load a specific video output plugin
+  */
+ 
+-vo_driver_t *_x_load_video_output_plugin(xine_t *this,
++vo_driver_t *_x_load_video_output_plugin(xine_t *self,
+ 					 char *id, int visual_type, void *visual) XINE_PROTECTED;
+ 
+ /*
+diff --git a/src/demuxers/demux_ts.c b/src/demuxers/demux_ts.c
+index 49880f9..ea1cc5c 100644
+--- a/src/demuxers/demux_ts.c
++++ b/src/demuxers/demux_ts.c
+@@ -1948,93 +1948,6 @@ static void demux_ts_parse_packet (demux_ts_t*this) {
+ 
+   data_len = PKT_SIZE - data_offset;
+ 
+-  /*
+-   * audio/video pid auto-detection, if necessary
+-   */
+-   program_count=0;
+-   if(this->media_num<MAX_PMTS)
+-      while ((this->program_number[program_count] != INVALID_PROGRAM) &&
+-		 (program_count < MAX_PMTS)) {
+-        if (pid == this->pmt_pid[program_count]) {
+-
+-#ifdef TS_LOG
+-          printf ("demux_ts: PMT prog: 0x%.4x pid: 0x%.4x\n",
+-            this->program_number[program_count],
+-            this->pmt_pid[program_count]);
+-#endif
+-	demux_ts_parse_pmt (this, originalPkt, originalPkt+data_offset-4,
+-	  payload_unit_start_indicator,
+-	  program_count);
+-	  return;
+-      }
+-      program_count++;
+-    }
+-
+-  if (payload_unit_start_indicator && this->media_num < MAX_PIDS){
+-    int pes_stream_id;
+-    if (pid == 0) {
+-      demux_ts_parse_pat (this, originalPkt, originalPkt+data_offset-4,
+-			  payload_unit_start_indicator);
+-      return;
+-    }
+-    program_count = 0;
+-    pes_stream_id = originalPkt[data_offset+3];
+-
+-#ifdef TS_HEADER_LOG
+-    printf("demux_ts:ts_pes_header:stream_id=0x%.2x\n",pes_stream_id);
+-#endif
+-
+-    if ( (pes_stream_id >= VIDEO_STREAM_S) && (pes_stream_id <= VIDEO_STREAM_E) ) {
+-      if ( this->videoPid == INVALID_PID) {
+-        int i, found = 0;
+-        for(i = 0; i < this->media_num; i++) {
+-          if (this->media[i].pid == pid) {
+-            found = 1;
+-            break;
+-          }
+-        }
+-
+-        if (found && (this->media[i].corrupted_pes == 0)) {
+-          this->videoPid = pid;
+-	  this->videoMedia = i;
+-        } else if (!found) {
+-	  this->videoPid = pid;
+-	  this->videoMedia = this->media_num;
+-	  this->media[this->videoMedia].autodetected = 1;
+-	  demux_ts_pes_new(this, this->media_num++, pid, this->video_fifo, 0x100 + pes_stream_id);
+-        }
+-
+-        if (this->videoPid != INVALID_PID) {
+-          xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
+-                   "demux_ts: auto-detected video pid 0x%.4x\n", pid);
+-        }
+-      }
+-    } else if ( (pes_stream_id >= AUDIO_STREAM_S) && (pes_stream_id <= AUDIO_STREAM_E) ) {
+-       if (this->audio_tracks_count < MAX_AUDIO_TRACKS) {
+-           int i, found = 0;
+-           for(i = 0; i < this->audio_tracks_count; i++) {
+-               if(this->audio_tracks[i].pid == pid) {
+-                   found = 1;
+-                   break;
+-               }
+-           }
+-           if(!found) {
+-#ifdef TS_PMT_LOG
+-               xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
+-                        "demux_ts: auto-detected audio pid 0x%.4x\n", pid);
+-#endif
+-               /* store PID, index and stream no. */
+-               this->audio_tracks[this->audio_tracks_count].pid = pid;
+-               this->audio_tracks[this->audio_tracks_count].media_index = this->media_num;
+-               this->media[this->media_num].type = this->audio_tracks_count;
+-               demux_ts_pes_new(this, this->media_num++, pid,
+-                                this->audio_fifo, 0x100 + pes_stream_id);
+-               this->audio_tracks_count++;
+-	   }
+-       }
+-    }
+-  }
+-
+   if (data_len > PKT_SIZE) {
+ 
+     xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
+@@ -2111,7 +2024,31 @@ static void demux_ts_event_handler (demux_ts_t *this) {
+       this->last_pmt_crc = 0;
+       _x_demux_control_start (this->stream);
+       break;
++    case XINE_EVENT_SET_VIDEO_STREAMTYPE:
++      printf("RECEIVED XINE_EVENT_SET_VIDEO_STREAMTYPE\n");
++ 
++      if (event->data) {
++        xine_streamtype_data_t* data = (xine_streamtype_data_t*)event->data;
++
++        this->videoPid = data->pid;
++        this->videoMedia = this->media_num;
++        demux_ts_pes_new(this, this->media_num++, data->pid, this->video_fifo, data->streamtype);
++      }
++      break;
+ 
++    case XINE_EVENT_SET_AUDIO_STREAMTYPE:
++      printf("RECEIVED XINE_EVENT_SET_AUDIO_STREAMTYPE\n");
++
++      if (event->data) {
++        xine_streamtype_data_t* data = (xine_streamtype_data_t*)event->data;
++
++        this->audio_tracks[this->audio_tracks_count].pid = data->pid;
++        this->audio_tracks[this->audio_tracks_count].media_index = this->media_num;
++        this->media[this->media_num].type = this->audio_tracks_count;
++        demux_ts_pes_new(this, this->media_num++, data->pid, this->audio_fifo, data->streamtype);
++        this->audio_tracks_count++;
++      }
++      break;
+     }
+ 
+     xine_event_free (event);
+diff --git a/src/input/Makefile.am b/src/input/Makefile.am
+index d0a5c96..71bb15d 100644
+--- a/src/input/Makefile.am
++++ b/src/input/Makefile.am
+@@ -79,7 +79,8 @@ xineplug_LTLIBRARIES = \
+ 	xineplug_inp_net.la \
+ 	$(in_pvr) \
+ 	$(in_dvb) \
+-	xineplug_inp_cdda.la
++	xineplug_inp_cdda.la \
++	xineplug_inp_enigma.la
+ 
+ 
+ xineplug_inp_file_la_SOURCES = input_file.c
+@@ -142,3 +143,6 @@ xineplug_inp_smb_la_LIBADD = $(XINE_LIB) $(LIBSMBCLIENT_LIBS) $(LTLIBINTL)
+ 
+ xineplug_inp_pvr_la_SOURCES = input_pvr.c
+ xineplug_inp_pvr_la_LIBADD = $(XINE_LIB) $(PTHREAD_LIBS) $(LTLIBINTL)
++
++xineplug_inp_enigma_la_SOURCES = input_enigma.c net_buf_ctrl.c
++xineplug_inp_enigma_la_LIBADD = $(XINE_LIB) $(PTHREAD_LIBS) $(LTLIBINTL)
+diff --git a/src/input/input_enigma.c b/src/input/input_enigma.c
+new file mode 100644
+index 0000000..4164a01
+--- /dev/null
++++ b/src/input/input_enigma.c
+@@ -0,0 +1,384 @@
++/*
++ * Copyright (C) 2000-2003 the xine project
++ *
++ * This file is part of xine, a free video player.
++ *
++ * xine is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * xine is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
++ */
++
++#ifdef HAVE_CONFIG_H
++#include "config.h"
++#endif
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <fcntl.h>
++#include <sys/stat.h>
++#include <errno.h>
++
++#define LOG_MODULE "input_enigma"
++#define LOG_VERBOSE
++/*
++#define LOG
++*/
++
++#include <xine/input_plugin.h>
++#include "net_buf_ctrl.h"
++
++#define ENIGMA_ABS_FIFO_DIR     "/tmp"
++#define BUFSIZE                 1024
++#define FILE_FLAGS O_RDONLY
++
++typedef struct enigma_input_plugin_s enigma_input_plugin_t;
++
++
++struct enigma_input_plugin_s {
++  input_plugin_t      input_plugin;
++
++  xine_stream_t      *stream;
++
++  int                 fh;
++  char               *mrl;
++  off_t               curpos;
++
++  char                seek_buf[BUFSIZE];
++
++  xine_t             *xine;
++
++  int                 last_disc_type;
++
++  nbc_t              *nbc;
++};
++
++typedef struct {
++  input_class_t     input_class;
++  xine_t           *xine;
++} enigma_input_class_t;
++
++static off_t enigma_read_abort(xine_stream_t *stream, int fd, char *buf, off_t todo)
++{
++  off_t ret;
++
++  while (1)
++  {
++    /*
++     * System calls are not a thread cancellation point in Linux
++     * pthreads.  However, the RT signal sent to cancel the thread
++     * will cause recv() to return with EINTR, and we can manually
++     * check cancellation.
++     */
++    pthread_testcancel();
++    ret = _x_read_abort(stream, fd, buf, todo);
++    pthread_testcancel();
++
++    if (ret < 0
++        && (errno == EINTR
++          || errno == EAGAIN))
++    {
++      continue;
++    }
++
++    break;
++  }
++
++  return ret;
++}
++
++static off_t enigma_plugin_read (input_plugin_t *this_gen,
++				void *buf_gen, off_t len) {
++
++  enigma_input_plugin_t  *this = (enigma_input_plugin_t *) this_gen;
++  uint8_t *buf = (uint8_t *)buf_gen;
++  off_t n, total = 0;
++#ifdef LOG_READ
++  lprintf ("reading %lld bytes...\n", len);
++#endif
++
++  if( len > 0 )
++  {
++    int retries = 0;
++    do
++    {
++      n = enigma_read_abort (this->stream, this->fh, (char *)&buf[total], len-total);
++      //n = _x_io_file_read (this->stream, this->fh, &buf[total], len - total);
++      if (0 == n)
++        lprintf("read 0, retries: %d\n", retries);
++    }
++    while (0 == n
++           && _x_continue_stream_processing(this->stream)
++           && 200 > retries++); // 200 * 50ms
++#ifdef LOG_READ
++    lprintf ("got %lld bytes (%lld/%lld bytes read)\n", n, total, len);
++#endif
++    if (n < 0)
++    {
++      _x_message(this->stream, XINE_MSG_READ_ERROR, NULL);
++      return 0;
++    }
++
++    this->curpos += n;
++    total += n;
++  }
++
++  return total;
++
++}
++
++static buf_element_t *enigma_plugin_read_block (input_plugin_t *this_gen, fifo_buffer_t *fifo,
++					       off_t todo) {
++
++  off_t                 total_bytes;
++  /* enigma_input_plugin_t  *this = (enigma_input_plugin_t *) this_gen; */
++  buf_element_t         *buf = fifo->buffer_pool_alloc (fifo);
++
++  if (todo > buf->max_size)
++    todo = buf->max_size;
++  if (todo < 0) {
++    buf->free_buffer (buf);
++    return NULL;
++  }
++
++  buf->content = buf->mem;
++  buf->type = BUF_DEMUX_BLOCK;
++
++  total_bytes = enigma_plugin_read (this_gen, (char*)buf->content, todo);
++
++  if (total_bytes != todo) {
++    buf->free_buffer (buf);
++    return NULL;
++  }
++
++  buf->size = total_bytes;
++
++  return buf;
++}
++
++/* forward reference */
++static off_t enigma_plugin_seek (input_plugin_t *this_gen, off_t offset, int origin) {
++
++  enigma_input_plugin_t  *this = (enigma_input_plugin_t *) this_gen;
++
++  printf ("seek %"PRId64" offset, %d origin...\n", offset, origin);
++
++  if ((origin == SEEK_CUR) && (offset >= 0)) {
++
++    for (;((int)offset) - BUFSIZE > 0; offset -= BUFSIZE) {
++      if( this_gen->read (this_gen, this->seek_buf, BUFSIZE) <= 0 )
++        return this->curpos;
++    }
++
++    this_gen->read (this_gen, this->seek_buf, offset);
++  }
++
++  if (origin == SEEK_SET) {
++
++    if (offset < this->curpos) {
++
++      //if( this->curpos <= this->preview_size )
++      //  this->curpos = offset;
++      //else
++        xprintf (this->xine, XINE_VERBOSITY_LOG,
++                 _("stdin: cannot seek back! (%" PRIdMAX " > %" PRIdMAX ")\n"),
++                 (intmax_t)this->curpos, (intmax_t)offset);
++        printf ("stdin: cannot seek back! (%" PRIdMAX " > %" PRIdMAX ")\n",
++                 (intmax_t)this->curpos, (intmax_t)offset);
++
++    } else {
++      offset -= this->curpos;
++
++      for (;((int)offset) - BUFSIZE > 0; offset -= BUFSIZE) {
++        if( this_gen->read (this_gen, this->seek_buf, BUFSIZE) <= 0 )
++          return this->curpos;
++      }
++
++      this_gen->read (this_gen, this->seek_buf, offset);
++    }
++  }
++
++  return this->curpos;
++}
++
++static off_t enigma_plugin_get_length(input_plugin_t *this_gen) {
++  return 0;
++}
++
++static uint32_t enigma_plugin_get_capabilities(input_plugin_t *this_gen) {
++
++  return INPUT_CAP_PREVIEW;
++}
++
++static uint32_t enigma_plugin_get_blocksize(input_plugin_t *this_gen) {
++
++  return 0;
++}
++
++static off_t enigma_plugin_get_current_pos (input_plugin_t *this_gen){
++  enigma_input_plugin_t *this = (enigma_input_plugin_t *) this_gen;
++
++  return this->curpos;
++}
++
++static const char* enigma_plugin_get_mrl (input_plugin_t *this_gen) {
++  enigma_input_plugin_t *this = (enigma_input_plugin_t *) this_gen;
++
++  return this->mrl;
++}
++
++static void enigma_plugin_dispose (input_plugin_t *this_gen ) {
++  enigma_input_plugin_t *this = (enigma_input_plugin_t *) this_gen;
++
++  if (this->nbc)
++    nbc_close (this->nbc);
++
++  if (this->fh != -1)
++    close(this->fh);
++
++  free (this->mrl);
++  free (this);
++}
++
++static int enigma_plugin_get_optional_data (input_plugin_t *this_gen,
++					   void *data, int data_type) {
++  enigma_input_plugin_t *this = (enigma_input_plugin_t *) this_gen;
++
++  switch (data_type)
++  {
++  case INPUT_OPTIONAL_DATA_PREVIEW:
++    /* just fake what mpeg_pes demuxer expects */
++    memcpy (data, "\x00\x00\x01\xe0\x00\x03\x80\x00\x00", 9);
++    return 9;
++  case INPUT_OPTIONAL_DATA_DEMUXER:
++    {
++      char **tmp = (char**)data;
++      *tmp = "mpeg-ts";
++    }
++    return 0;
++  }
++
++  return INPUT_OPTIONAL_UNSUPPORTED;
++}
++
++static int enigma_plugin_open (input_plugin_t *this_gen ) {
++  enigma_input_plugin_t *this = (enigma_input_plugin_t *) this_gen;
++
++  printf ("trying to open '%s'...\n", this->mrl);
++
++  if (this->fh == -1) {
++    int err = 0;
++    char *filename = (char *)ENIGMA_ABS_FIFO_DIR "/ENIGMA_FIFO";
++    this->fh = open (filename, FILE_FLAGS);
++
++    printf("filename '%s'\n", filename);
++
++    if (this->fh == -1) {
++      xprintf (this->xine, XINE_VERBOSITY_LOG, _("enigma_fifo: failed to open '%s'\n"), filename);
++      printf ("enigma_fifo: failed to open '%s'\n", filename);
++      return 0;
++    }
++
++  }
++
++  /*
++   * mrl accepted and opened successfully at this point
++   *
++   * => create plugin instance
++   */
++
++  this->curpos          = 0;
++
++  return 1;
++}
++
++static input_plugin_t *enigma_class_get_instance (input_class_t *class_gen,
++						 xine_stream_t *stream, const char *data) {
++
++  enigma_input_class_t  *class = (enigma_input_class_t *) class_gen;
++  enigma_input_plugin_t *this;
++  char                 *mrl = strdup(data);
++  int                   fh;
++
++
++  if (strncasecmp (mrl, "enigma", 6)) {
++    free (mrl);
++    return NULL;
++  }
++
++
++  /*
++   * mrl accepted and opened successfully at this point
++   *
++   * => create plugin instance
++   */
++
++  this       = calloc(1, sizeof(enigma_input_plugin_t));
++
++  this->stream = stream;
++  this->curpos = 0;
++  this->mrl    = mrl;
++  this->fh     = -1;
++  this->xine   = class->xine;
++
++  this->input_plugin.open              = enigma_plugin_open;
++  this->input_plugin.get_capabilities  = enigma_plugin_get_capabilities;
++  this->input_plugin.read              = enigma_plugin_read;
++  this->input_plugin.read_block        = enigma_plugin_read_block;
++  this->input_plugin.seek              = enigma_plugin_seek;
++  this->input_plugin.get_current_pos   = enigma_plugin_get_current_pos;
++  this->input_plugin.get_length        = enigma_plugin_get_length;
++  this->input_plugin.get_blocksize     = enigma_plugin_get_blocksize;
++  this->input_plugin.get_mrl           = enigma_plugin_get_mrl;
++  this->input_plugin.dispose           = enigma_plugin_dispose;
++  this->input_plugin.get_optional_data = enigma_plugin_get_optional_data;
++  this->input_plugin.input_class       = class_gen;
++
++  /*
++   * buffering control
++   */
++  this->nbc    = nbc_init (this->stream);
++
++  return &this->input_plugin;
++}
++
++
++static void *init_class (xine_t *xine, void *data) {
++
++  enigma_input_class_t  *this;
++
++  this = calloc(1, sizeof (enigma_input_class_t));
++
++  this->xine   = xine;
++
++  this->input_class.get_instance       = enigma_class_get_instance;
++  this->input_class.identifier         = "enigma";
++  this->input_class.description        = N_("ENIGMA2PC display device plugin");
++  this->input_class.get_dir            = NULL;
++  this->input_class.get_autoplay_list  = NULL;
++  this->input_class.dispose            = default_input_class_dispose;
++  this->input_class.eject_media        = NULL;
++
++  return this;
++}
++
++/*
++ * exported plugin catalog entry
++ */
++
++const plugin_info_t xine_plugin_info[] EXPORTED = {
++  /* type, API, "name", version, special_info, init_function */
++  { PLUGIN_INPUT, 18, "enigma", XINE_VERSION_CODE, NULL, init_class },
++  { PLUGIN_NONE, 0, "", 0, NULL, NULL }
++};
+diff --git a/src/input/net_buf_ctrl.c b/src/input/net_buf_ctrl.c
+index d777a0c..0b7e8a2 100644
+--- a/src/input/net_buf_ctrl.c
++++ b/src/input/net_buf_ctrl.c
+@@ -45,6 +45,8 @@
+ #define FIFO_PUT                   0
+ #define FIFO_GET                   1
+ 
++#define DEFAULT_PTS_START          150000
++
+ struct nbc_s {
+ 
+   xine_stream_t   *stream;
+@@ -296,6 +298,7 @@ static void nbc_put_cb (fifo_buffer_t *fifo,
+   int64_t video_p = 0;
+   int64_t audio_p = 0;
+   int has_video, has_audio;
++  //int is_enigma_plugin = !strcmp ( this->stream->input_plugin->input_class->identifier, "enigma" );
+ 
+   lprintf("enter nbc_put_cb\n");
+   pthread_mutex_lock(&this->mutex);
+@@ -318,7 +321,16 @@ static void nbc_put_cb (fifo_buffer_t *fifo,
+          * be sure that the next buffer_pool_alloc() call will not deadlock,
+          * we need at least 2 buffers (see buffer.c)
+          */
+-        if ((((!has_video) || (this->video_fifo_length > this->high_water_mark)) &&
++        int64_t first_pts = this->video_first_pts>this->audio_first_pts?this->video_first_pts:this->audio_first_pts;
++        int64_t last_pts = this->video_last_pts<this->audio_last_pts?this->video_last_pts:this->audio_last_pts;
++
++        if ( has_video && has_audio && (last_pts-first_pts)>DEFAULT_PTS_START ) {
++          this->progress = 100;
++          report_progress (this->stream, 100);
++          this->buffering = 0;
++          nbc_set_speed_normal(this);
++        }
++        else if ((((!has_video) || (this->video_fifo_length > this->high_water_mark)) &&
+              ((!has_audio) || (this->audio_fifo_length > this->high_water_mark)) &&
+              (has_video || has_audio))) {
+ 
+diff --git a/src/video_dec/libvdpau/vdpau_h264.c b/src/video_dec/libvdpau/vdpau_h264.c
+index 9bcddd9..6523c2e 100644
+--- a/src/video_dec/libvdpau/vdpau_h264.c
++++ b/src/video_dec/libvdpau/vdpau_h264.c
+@@ -378,7 +378,7 @@ static int vdpau_decoder_init(video_decoder_t *this_gen)
+   event.data_length = sizeof(data);
+   data.width = this->width;
+   data.height = this->height;
+-  data.aspect = this->ratio;
++  data.aspect = this->ratio>1.77?3:2;
+   xine_event_send( this->stream, &event );
+ 
+   switch(this->completed_pic->sps_nal->sps.profile_idc) {
+diff --git a/src/video_dec/libvdpau/vdpau_mpeg12.c b/src/video_dec/libvdpau/vdpau_mpeg12.c
+index 1067f86..697cac8 100644
+--- a/src/video_dec/libvdpau/vdpau_mpeg12.c
++++ b/src/video_dec/libvdpau/vdpau_mpeg12.c
+@@ -401,7 +401,7 @@ static void process_sequence_mpeg12_dependent_data( vdpau_mpeg12_decoder_t *this
+     event.data_length = sizeof(data);
+     data.width = sequence->coded_width;
+     data.height = sequence->coded_height;
+-    data.aspect = sequence->ratio;
++    data.aspect = sequence->aspect_ratio_information;
+     xine_event_send( this_gen->stream, &event );
+   }
+   else if ( sequence->have_header == 2 && sequence->reported_video_step != sequence->video_step ) {
+diff --git a/src/video_dec/libvdpau/vdpau_mpeg4.c b/src/video_dec/libvdpau/vdpau_mpeg4.c
+index 7d940a5..a3ec2df 100644
+--- a/src/video_dec/libvdpau/vdpau_mpeg4.c
++++ b/src/video_dec/libvdpau/vdpau_mpeg4.c
+@@ -322,7 +322,7 @@ static void update_metadata( vdpau_mpeg4_decoder_t *this_gen )
+   event.data_length = sizeof(data);
+   data.width = sequence->coded_width;
+   data.height = sequence->coded_height;
+-  data.aspect = sequence->ratio;
++  data.aspect = sequence->ratio>1.77?3:2;
+   xine_event_send( this_gen->stream, &event );
+ }
+ 
+diff --git a/src/video_dec/libvdpau/vdpau_vc1.c b/src/video_dec/libvdpau/vdpau_vc1.c
+index 02545a7..5d8c594 100644
+--- a/src/video_dec/libvdpau/vdpau_vc1.c
++++ b/src/video_dec/libvdpau/vdpau_vc1.c
+@@ -238,7 +238,7 @@ static void update_metadata( vdpau_vc1_decoder_t *this_gen )
+     event.data_length = sizeof(data);
+     data.width = sequence->coded_width;
+     data.height = sequence->coded_height;
+-    data.aspect = sequence->ratio;
++    data.aspect = sequence->ratio>1.77?3:2;
+     xine_event_send( this_gen->stream, &event );
+   }
+ }
+diff --git a/src/video_out/video_out_vdpau.c b/src/video_out/video_out_vdpau.c
+index b9aef2b..382df5e 100644
+--- a/src/video_out/video_out_vdpau.c
++++ b/src/video_out/video_out_vdpau.c
+@@ -677,7 +677,14 @@ static void vdpau_process_overlays (vdpau_driver_t *this, vo_frame_t *frame)
+     ovl_rect.x1 = ovl->x + ovl->width;
+     ovl_rect.y1 = ovl->y + ovl->height;
+ 
+-    if (!ovl->unscaled) {
++    if (ovl->unscaled==2) {
++      ovl_rect.x0 = 0;
++      ovl_rect.y0 = 0;
++      ovl_rect.x1 = this->sc.gui_width;
++      ovl_rect.y1 = this->sc.gui_height;
++      this->ovl_changed = 1;
++    }
++    else if (ovl->unscaled==0) {
+       double rx, ry;
+       if (ovl->extent_width > 0 && ovl->extent_height > 0) {
+         rx = (double)ovl->extent_width;
+diff --git a/src/xine-engine/osd.c b/src/xine-engine/osd.c
+index 8e48da9..6fca63f 100644
+--- a/src/xine-engine/osd.c
++++ b/src/xine-engine/osd.c
+@@ -511,6 +511,10 @@ static int osd_show_unscaled (osd_object_t *osd, int64_t vpts) {
+   return _osd_show(osd, vpts, 1);
+ }
+ 
++static int osd_show_gui_scaled (osd_object_t *osd, int64_t vpts) {
++  return _osd_show(osd, vpts, 2);
++}
++
+ /*
+  * send event to hide osd at given pts (0=now)
+  * the object is not changed. there may be subsequent drawing  on it.
+@@ -1917,6 +1921,7 @@ osd_renderer_t *_x_osd_renderer_init( xine_stream_t *stream ) {
+   this->draw_bitmap        = osd_draw_bitmap;
+   this->set_argb_buffer    = osd_set_argb_buffer;
+   this->show_unscaled      = osd_show_unscaled;
++  this->show_scaled        = osd_show_gui_scaled;
+   this->get_capabilities   = osd_get_capabilities;
+   this->set_extent         = osd_set_extent;
+   this->set_video_window   = osd_set_video_window;
+diff --git a/src/xine-engine/video_out.c b/src/xine-engine/video_out.c
+index f348da3..6b4340b 100644
+--- a/src/xine-engine/video_out.c
++++ b/src/xine-engine/video_out.c
+@@ -143,7 +143,7 @@ typedef struct {
+ 
+   /* pts value when decoder delivered last video frame */
+   int64_t                   last_delivery_pts;
+-
++  int64_t                   last_pts;
+ 
+   video_overlay_manager_t  *overlay_source;
+ 
+@@ -151,6 +151,7 @@ typedef struct {
+ 
+   int                       current_width, current_height;
+   int64_t                   current_duration;
++  int                       framerate;
+   int                       frame_drop_limit_max;
+   int                       frame_drop_limit;
+   int                       frame_drop_cpt;
+@@ -754,6 +755,24 @@ static int vo_frame_draw (vo_frame_t *img, xine_stream_t *stream) {
+   this->current_height = img->height;
+ 
+   if (stream) {
++
++    int new_framerate = img->duration==0?0:90000*1000/img->duration;
++    if (this->framerate != new_framerate) {
++      this->framerate = new_framerate;
++
++      xine_event_t event;
++      xine_framerate_data_t data;
++      event.type = XINE_EVENT_FRAMERATE_CHANGE;
++      event.stream = stream;
++      event.data = &data;
++      event.data_length = sizeof(data);
++      data.framerate = this->framerate;
++      xine_event_send( stream, &event );
++    }
++
++    if (img->pts!=0)
++      this->last_pts = img->pts;
++
+     _x_refcounter_inc(stream->refcounter);
+     _x_extra_info_merge( img->extra_info, stream->video_decoder_extra_info );
+     stream->metronom->got_video_frame (stream->metronom, img);
+@@ -1237,6 +1256,7 @@ static vo_frame_t *get_next_frame (vos_t *this, int64_t cur_vpts,
+       pthread_mutex_unlock( &this->free_img_buf_queue->mutex );
+       if( img ) {
+         img->vpts = cur_vpts;
++        img->duration = DEFAULT_FRAME_DURATION;
+         /* extra info of the backup is thrown away, because it is not up to date */
+         _x_extra_info_reset(img->extra_info);
+         img->future_frame = NULL;
+@@ -1776,6 +1796,10 @@ static int vo_get_property (xine_video_port_t *this_gen, int property) {
+     pthread_mutex_unlock(&this->streams_lock);
+     break;
+ 
++  case VO_PROP_LAST_PTS:
++    ret = (int)&this->last_pts;
++    break;
++
+   /*
+    * handle XINE_PARAM_xxx properties (convert from driver's range)
+    */
+diff --git a/src/xine-engine/xine_interface.c b/src/xine-engine/xine_interface.c
+index ab1bafa..65efe56 100644
+--- a/src/xine-engine/xine_interface.c
++++ b/src/xine-engine/xine_interface.c
+@@ -825,6 +825,10 @@ void xine_osd_show_unscaled(xine_osd_t *this, int64_t vpts) {
+   this->osd.renderer->show_unscaled(&this->osd, vpts);
+ }
+ 
++void xine_osd_show_scaled(xine_osd_t *this, int64_t vpts) {
++  this->osd.renderer->show_scaled(&this->osd, vpts);
++}
++
+ void xine_osd_hide(xine_osd_t *this, int64_t vpts) {
+   this->osd.renderer->hide(&this->osd, vpts);
+ }
+-- 
+1.7.1
+

@@ -41,7 +41,6 @@ private:
 
 class eDecryptRawFile: public eRawFile
 {
-	//DECLARE_REF(eDecryptRawFile);
 public:
 	eDecryptRawFile();
 	~eDecryptRawFile();
@@ -53,6 +52,7 @@ private:
 	int bs_size;
 	bool delivered;
 	int lastPacketsCount;
+	bool stream_correct;
 
 	uint8_t* getPackets(int &packetsCount);
 };

@@ -50,7 +50,9 @@ gdiinclude_HEADERS = \
 if HAVE_XLIB
 libenigma_gdi_a_SOURCES += \
 	gxlibdc.cpp \
-	gxlibdc.h
+	gxlibdc.h \
+	xineLib.cpp \
+	xineLib.h
 else
 libenigma_gdi_a_SOURCES += \
 	sdl.cpp \

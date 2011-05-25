@@ -938,6 +938,9 @@ eDVBServicePlay::eDVBServicePlay(const eServiceReference &ref, eDVBService *serv
 	CONNECT(m_subtitle_sync_timer->timeout, eDVBServicePlay::checkSubtitleTiming);
 
 	m_player = 0;
+
+	xineLib = cXineLib::getInstance();
+	xine_connection = CONNECT(xineLib->m_event, eDVBServicePlay::video_event);
 }
 
 eDVBServicePlay::~eDVBServicePlay()
@@ -965,6 +968,9 @@ eDVBServicePlay::~eDVBServicePlay()
 			meta.updateMeta(m_reference.path);
 		}
 	}
+
+	xine_connection.disconnect();
+
 	delete m_subtitle_widget;
 }
 
@@ -1466,25 +1472,19 @@ RESULT eDVBServicePlay::seekRelative(int direction, pts_t to)
 RESULT eDVBServicePlay::getPlayPosition(pts_t &pos)
 {
 	ePtr<iDVBPVRChannel> pvr_channel;
-	
-	if (!m_decode_demux)
-		return -1;
+printf("DVBServicePlay::getPlayPosition\n");
 	
 	if ((m_timeshift_enabled ? m_service_handler_timeshift : m_service_handler).getPVRChannel(pvr_channel))
 		return -1;
 	
 	int r = 0;
 
-		/* if there is a decoder, use audio or video PTS */
-	if (m_decoder)
-	{
-		r = m_decoder->getPTS(0, pos);
-		if (r)
-			return r;
-	}
+	r = xineLib->getPTS(pos);
+	if (r)
+		return r;
 	
 		/* fixup */
-	return pvr_channel->getCurrentPosition(m_decode_demux, pos, m_decoder ? 1 : 0);
+	return pvr_channel->getCurrentPosition(m_decode_demux, pos, 1);
 }
 
 RESULT eDVBServicePlay::setTrickmode(int trick)
@@ -1641,16 +1641,19 @@ int eDVBServicePlay::getInfo(int w)
 	switch (w)
 	{
 	case sVideoHeight:
-		if (m_decoder)
-			return m_decoder->getVideoHeight();
+		//if (m_decoder)
+		//	return m_decoder->getVideoHeight();
+		return xineLib->getVideoHeight();
 		break;
 	case sVideoWidth:
-		if (m_decoder)
-			return m_decoder->getVideoWidth();
+		//if (m_decoder)
+		//	return m_decoder->getVideoWidth();
+		return xineLib->getVideoWidth();
 		break;
 	case sFrameRate:
-		if (m_decoder)
-			return m_decoder->getVideoFrameRate();
+		//if (m_decoder)
+		//	return m_decoder->getVideoFrameRate();
+		return xineLib->getVideoFrameRate();
 		break;
 	case sProgressive:
 		if (m_decoder)
@@ -1658,9 +1661,10 @@ int eDVBServicePlay::getInfo(int w)
 		break;
 	case sAspect:
 	{
-		int aspect = -1;
-		if (m_decoder)
-			aspect = m_decoder->getVideoAspect();
+		//if (m_decoder)
+		//	aspect = m_decoder->getVideoAspect();
+		int aspect = xineLib->getVideoAspect();
+
 		if (aspect == -1 && no_program_info)
 			break;
 		else if (aspect == -1 && !program.videoStreams.empty() && program.videoStreams[0].component_tag != -1)
@@ -2356,7 +2360,6 @@ void eDVBServicePlay::updateTimeshiftPids()
 			m_player->addPID(*i);
 		for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
 			m_player->removePID(*i);
-		printf("updateTimeshiftPids\n");
 	}
 }
 
@@ -2394,7 +2397,6 @@ void eDVBServicePlay::resetTimeshift(int start)
 	m_new_subtitle_page_connection = 0;
 	m_new_dvb_subtitle_page_connection = 0;
 	m_rds_decoder_event_connection = 0;
-	m_video_event_connection = 0;
 	m_timeshift_changed = 1;
 	m_timeshift_file_next.clear();
 
@@ -2488,9 +2490,6 @@ void eDVBServicePlay::updateDecoder(bool sendSeekableStateChanged)
 	if (!m_decoder)
 	{
 		m_decoder = new eTSMPEGDecoder(m_is_primary ? 0 : 1);
-		if (m_decoder)
-			m_decoder->connectVideoEvent(slot(*this, &eDVBServicePlay::video_event),
-					m_video_event_connection);
 
 		if (!m_is_pvr) {
 			h.getDecodeDemux(m_decode_demux);
@@ -2985,8 +2984,9 @@ void eDVBServicePlay::newSubtitlePage(const eDVBTeletextSubtitlePage &page)
 	if (m_subtitle_widget)
 	{
 		pts_t pos = 0;
-		if (m_decoder)
-			m_decoder->getPTS(0, pos);
+		//if (m_decoder)
+		//	m_decoder->getPTS(0, pos);
+		xineLib->getPTS(pos);
 		eDebug("got new subtitle page %lld %lld %d", pos, page.m_pts, page.m_have_pts);
 		m_subtitle_pages.push_back(page);
 		checkSubtitleTiming();
@@ -3021,8 +3021,9 @@ void eDVBServicePlay::checkSubtitleTiming()
 	
 		pts_t pos = 0;
 	
-		if (m_decoder)
-			m_decoder->getPTS(0, pos);
+		//if (m_decoder)
+		//	m_decoder->getPTS(0, pos);
+		xineLib->getPTS(pos);
 
 		eDebug("%lld %lld", pos, show_time);
 		int diff = show_time - pos;
@@ -3069,8 +3070,9 @@ void eDVBServicePlay::newDVBSubtitlePage(const eDVBSubtitlePage &p)
 	if (m_subtitle_widget)
 	{
 		pts_t pos = 0;
-		if (m_decoder)
-			m_decoder->getPTS(0, pos);
+		//if (m_decoder)
+		//	m_decoder->getPTS(0, pos);
+		xineLib->getPTS(pos);
 		eDebug("got new subtitle page %lld %lld", pos, p.m_show_time);
 		m_dvb_subtitle_pages.push_back(p);
 		checkSubtitleTiming();
