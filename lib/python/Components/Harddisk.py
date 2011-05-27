@@ -459,7 +459,7 @@ class HarddiskManager:
 
 		self.on_partition_list_change = CList()
 
-		self.enumerateBlockDevices()
+		#self.enumerateBlockDevices()
 
 		# currently, this is just an enumeration of what's possible,
 		# this probably has to be changed to support automount stuff.

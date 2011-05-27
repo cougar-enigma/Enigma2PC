@@ -58,6 +58,9 @@ gXlibDC::gXlibDC() : m_pump(eApp, 1)
 	XSync(display, False);
 	XUnlockDisplay(display);
 
+	wmDelete=XInternAtom(display, "WM_DELETE_WINDOW", True);
+	XSetWMProtocols(display, window, &wmDelete, 1);
+
 	printf("Display resolution %d %d\n", DisplayWidth(display, screen), DisplayHeight(display, screen));
 
 	vis.display           = display;
@@ -90,9 +93,8 @@ gXlibDC::~gXlibDC()
 {
 	instance = 0;
 
-	//pushEvent(EV_QUIT);
-	//kill();
-	//SDL_Quit();
+	thread_stop = true;
+	kill();
 
 	if (xineLib) {
 		delete xineLib;
@@ -122,16 +124,24 @@ void gXlibDC::pumpEvent(const XKeyEvent &event)
 	switch (event.type) {
 	case KeyPress:
 	case KeyRelease:
-		if (event.keycode!=95)
+		switch (event.keycode) {
+		case 95: // F11
+			if (event.type==KeyPress) {
+				fullscreen_switch();
+			}
+			break;
+		case 53: // X
+			if (event.type==KeyPress) {
+				eDebug("Enigma2 Quit");
+				extern void quitMainloop(int exit_code);
+				quitMainloop(0);
+			}
+			break;
+		default:
 			keyEvent(event);
-		else if (event.type==KeyPress)
-			fullscreen_switch();
+			break;
+		}
 		break;
-	//case SDL_QUIT:
-	//	eDebug("SDL Quit");
-	//	extern void quitMainloop(int exit_code);
-	//	quitMainloop(0);
-	//	break;
 	}
 }
 
@@ -235,22 +245,20 @@ void gXlibDC::thread()
 	hasStarted();
 
 	int x11_fd = ConnectionNumber(display);
-	bool stop = false;
+	thread_stop = false;
 	fd_set in_fds;
 	struct timeval tv;
 	XEvent event;
 
-	while (!stop) {
+	while (!thread_stop) {
 		FD_ZERO(&in_fds);
 		FD_SET(x11_fd, &in_fds);
 
-		tv.tv_usec = 0;
-		tv.tv_sec = 1;
+		tv.tv_usec = 100000;
+		tv.tv_sec = 0;
 
 		if (select(x11_fd+1, &in_fds, 0, 0, &tv))
 			printf("Event Received!\n");
-		//else
-		//	printf("Timer Fired!\n");
 
 		while(XPending(display))
 		{
@@ -260,8 +268,22 @@ void gXlibDC::thread()
 			{
 			case KeyPress:
 			case KeyRelease:
-				XKeyEvent& xKeyEvent = (XKeyEvent&)event;
-				m_pump.send(xKeyEvent);
+				{
+					XKeyEvent& xKeyEvent = (XKeyEvent&)event;
+					m_pump.send(xKeyEvent);
+				}
+				break;
+			case ClientMessage:
+				if (event.xclient.data.l[0] == wmDelete) {
+					thread_stop = true;
+					XKeyEvent xKeyEvent;
+					xKeyEvent.type = KeyPress;
+					xKeyEvent.keycode = 53; // X
+					m_pump.send(xKeyEvent);
+				}
+				break;
+			case Expose:
+				xineLib->showOsd();
 				break;
 			}
 		}

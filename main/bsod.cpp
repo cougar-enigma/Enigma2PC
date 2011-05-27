@@ -184,26 +184,16 @@ void bsodFatal(const char *component)
 		xml.stringFromFile("dreamboxmodel", "/proc/stb/info/model");
 		xml.stringFromFile("kernelcmdline", "/proc/cmdline");
 		xml.stringFromFile("nimsockets", "/proc/bus/nim_sockets");
-		if (!getConfigBool("config.plugins.crashlogautosubmit.sendAnonCrashlog", true)) {
-			xml.cDataFromFile("dreamboxca", "/proc/stb/info/ca");
-			xml.cDataFromFile("enigma2settings", eEnv::resolve("${sysconfdir}/enigma2/settings"), ".password=");
-		}
-		if (getConfigBool("config.plugins.crashlogautosubmit.addNetwork", false)) {
-			xml.cDataFromFile("networkinterfaces", "/etc/network/interfaces");
-			xml.cDataFromFile("dns", "/etc/resolv.conf");
-			xml.cDataFromFile("defaultgateway", "/etc/default_gw");
-		}
-		if (getConfigBool("config.plugins.crashlogautosubmit.addWlan", false))
-			xml.cDataFromFile("wpasupplicant", "/etc/wpa_supplicant.conf");
+
 		xml.cDataFromFile("imageversion", "/etc/image-version");
 		xml.cDataFromFile("imageissue", "/etc/issue.net");
 		xml.close();
 
-		xml.open("software");
-		xml.cDataFromCmd("enigma2software", "opkg list_installed | grep enigma2");
-		xml.cDataFromCmd("dreamboxsoftware", "opkg list_installed | grep dream");
-		xml.cDataFromCmd("gstreamersoftware", "opkg list_installed | grep gst");
-		xml.close();
+		//xml.open("software");
+		//xml.cDataFromCmd("enigma2software", "opkg list_installed | grep enigma2");
+		//xml.cDataFromCmd("dreamboxsoftware", "opkg list_installed | grep dream");
+		//xml.cDataFromCmd("gstreamersoftware", "opkg list_installed | grep gst");
+		//xml.close();
 
 		xml.open("crashlogs");
 		xml.cDataFromString("enigma2crashlog", getLogBuffer());

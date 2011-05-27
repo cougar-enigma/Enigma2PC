@@ -7,17 +7,20 @@
 
 #include <X11/X.h>
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
+//#include <X11/Xutil.h>
+#include <X11/Xatom.h>
 
 #include <lib/gdi/xineLib.h>
 
 /*#define INPUT_MOTION (ExposureMask | ButtonPressMask | KeyPressMask | \
                       ButtonMotionMask | StructureNotifyMask |        \
-                      PropertyChangeMask | PointerMotionMask)
-#define INPUT_MOTION (ExposureMask | ButtonPressMask | KeyPressMask | \
+                      PropertyChangeMask | PointerMotionMask)*/
+/*#define INPUT_MOTION (ExposureMask | ButtonPressMask | KeyPressMask | \
                       ButtonMotionMask | StructureNotifyMask |        \
                       PropertyChangeMask)*/
-#define INPUT_MOTION KeyPressMask | KeyReleaseMask
+#define INPUT_MOTION (ExposureMask | KeyPressMask | \
+                      StructureNotifyMask | PropertyChangeMask)
+/*#define INPUT_MOTION KeyPressMask | KeyReleaseMask*/
 
 enum
 {
@@ -38,6 +41,9 @@ private:
 	cXineLib            *xineLib;
 	gSurface             m_surface;
 	uint32_t            *argb_buffer;
+	bool                 thread_stop;
+
+	Atom                 wmDelete;
 
 	void exec(const gOpcode *opcode);
 
