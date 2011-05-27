@@ -1,7 +1,9 @@
+#include <fstream>
 #include <lib/gdi/gxlibdc.h>
 #include <lib/actions/action.h>
 #include <lib/base/init.h>
 #include <lib/base/init_num.h>
+#include <lib/base/eenv.h>
 #include <lib/driver/input_fake.h>
 #include <lib/driver/rcxlib.h>
 
@@ -10,6 +12,41 @@ Display   *gXlibDC::display;
 Window    gXlibDC::window;
 int       gXlibDC::width, gXlibDC::height;
 double    gXlibDC::pixel_aspect;
+
+static const std::string getConfigString(const std::string &key, const std::string &defaultValue)
+{
+	std::string value = defaultValue;
+
+	// get value from enigma2 settings file
+	std::ifstream in(eEnv::resolve("${sysconfdir}/enigma2/settings").c_str());
+	if (in.good()) {
+		do {
+			std::string line;
+			std::getline(in, line);
+			size_t size = key.size();
+			if (!line.compare(0, size, key) && line[size] == '=') {
+				value = line.substr(size + 1);
+				break;
+			}
+		} while (in.good());
+		in.close();
+	}
+
+	return value;
+}
+
+static bool getConfigBool(const std::string &key, bool defaultValue)
+{
+	std::string value = getConfigString(key, defaultValue ? "true" : "false");
+	const char *cvalue = value.c_str();
+
+	if (!strcasecmp(cvalue, "true"))
+		return true;
+	if (!strcasecmp(cvalue, "false"))
+		return false;
+
+	return defaultValue;
+}
 
 gXlibDC::gXlibDC() : m_pump(eApp, 1)
 {
@@ -21,9 +58,9 @@ gXlibDC::gXlibDC() : m_pump(eApp, 1)
 	CONNECT(m_pump.recv_msg, gXlibDC::pumpEvent);
 
 	argb_buffer = NULL;
-	fullscreen = 0;
-	windowWidth  = width  = 720;
-	windowHeight = height = 576;
+	fullscreen = getConfigBool("config.pc.default_fullscreen", false);
+	windowWidth  = 720;
+	windowHeight = 576;
 
 	ASSERT(instance == 0);
 	instance = this;
@@ -42,15 +79,15 @@ gXlibDC::gXlibDC() : m_pump(eApp, 1)
 	screen       = XDefaultScreen(display);
 
 	if (fullscreen)	{
-		windowWidth  = width  = DisplayWidth( display, screen );
-		windowHeight = height = DisplayHeight( display, screen );
+		width  = DisplayWidth( display, screen );
+		height = DisplayHeight( display, screen );
 	} else {
-		windowWidth  = width  = 720;
-		windowHeight = height = 576;
+		width  = windowWidth;
+		height = windowHeight;
 	}
 
 	XLockDisplay(display);
- 	window = XCreateSimpleWindow(display, XDefaultRootWindow(display), 0, 0, width, height, 1, 0, 0);
+ 	window = XCreateSimpleWindow(display, XDefaultRootWindow(display), 0, 0, windowWidth, windowHeight, 0, 0, 0);
 	XSelectInput (display, window, INPUT_MOTION);
 	XMapRaised(display, window);
 	res_h = (DisplayWidth(display, screen) * 1000 / DisplayWidthMM(display, screen));
@@ -174,28 +211,32 @@ void gXlibDC::exec(const gOpcode *o)
 void gXlibDC::setResolution(int xres, int yres)
 {
 	printf("setResolution %d %d\n", xres, yres);
-	windowWidth  = width  = xres;
-	windowHeight = height = yres;
+	windowWidth  = xres;
+	windowHeight = yres;
+
+	if (!fullscreen) {
+		width = xres;
+		height = yres;
+	}
 
 	if (argb_buffer)
 		delete [] argb_buffer;
-	argb_buffer = new uint32_t[width*height];
+	argb_buffer = new uint32_t[windowWidth*windowHeight];
 
 	xineLib->newOsd(windowWidth, windowHeight, argb_buffer);
 
 	m_surface.type = 0;
-	m_surface.x = width;
-	m_surface.y = height;
+	m_surface.x = windowWidth;
+	m_surface.y = windowHeight;
 	m_surface.bpp = 32;
 	m_surface.bypp = 4;
-	m_surface.stride = width*4;
+	m_surface.stride = windowWidth*4;
 	m_surface.data = argb_buffer;
 	m_surface.offset = 0;
 
 	m_pixmap = new gPixmap(&m_surface);
 
-	if (!fullscreen)
-		updateWindowState();
+	updateWindowState();
 }
 
 void gXlibDC::updateWindowState() {
@@ -222,7 +263,7 @@ void gXlibDC::updateWindowState() {
 	XSendEvent(display, XDefaultRootWindow(display), False, SubstructureNotifyMask, &xev);
 
 	if (!fullscreen)
-		XResizeWindow(display, window, width, height);
+		XResizeWindow(display, window, windowWidth, windowHeight);
 
 	XFlush(display);
 

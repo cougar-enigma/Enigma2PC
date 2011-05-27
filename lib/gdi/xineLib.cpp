@@ -1,11 +1,11 @@
 #include <lib/gdi/xineLib.h>
+#include <lib/base/eenv.h>
 
 cXineLib   *cXineLib::instance;
 
 DEFINE_REF(cXineLib);
 
 cXineLib::cXineLib(x11_visual_t *vis) : m_pump(eApp, 1) {
-	char        mrl[] = "/usr/local/etc/tuxbox/logo.mvi";
 	char        configfile[300];
 	char        vo_driver[] = "vdpau";
 	char        ao_driver[] = "alsa";
@@ -31,7 +31,8 @@ cXineLib::cXineLib(x11_visual_t *vis) : m_pump(eApp, 1) {
 	ao_port     = xine_open_audio_driver(xine , ao_driver, NULL);
 	stream      = xine_stream_new(xine, ao_port, vo_port);
 
-	if((!xine_open(stream, mrl)) || (!xine_play(stream, 0, 0))) {
+	if ( (!xine_open(stream, eEnv::resolve("${sysconfdir}/tuxbox/logo.mvi").c_str()))
+			|| (!xine_play(stream, 0, 0)) ) {
 		return;
 	}
 

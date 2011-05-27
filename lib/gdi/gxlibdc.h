@@ -7,20 +7,11 @@
 
 #include <X11/X.h>
 #include <X11/Xlib.h>
-//#include <X11/Xutil.h>
 #include <X11/Xatom.h>
 
 #include <lib/gdi/xineLib.h>
 
-/*#define INPUT_MOTION (ExposureMask | ButtonPressMask | KeyPressMask | \
-                      ButtonMotionMask | StructureNotifyMask |        \
-                      PropertyChangeMask | PointerMotionMask)*/
-/*#define INPUT_MOTION (ExposureMask | ButtonPressMask | KeyPressMask | \
-                      ButtonMotionMask | StructureNotifyMask |        \
-                      PropertyChangeMask)*/
-#define INPUT_MOTION (ExposureMask | KeyPressMask | \
-                      StructureNotifyMask | PropertyChangeMask)
-/*#define INPUT_MOTION KeyPressMask | KeyReleaseMask*/
+#define INPUT_MOTION (ExposureMask | KeyPressMask | KeyReleaseMask)
 
 enum
 {
@@ -59,7 +50,6 @@ private:
 	};
 
 	//void pushEvent(enum event code, void *data1 = 0, void *data2 = 0);
-	//void evSetVideoMode(unsigned long xres, unsigned long yres);
 	void evFlip();
 	void fullscreen_switch();
 	void updateWindowState();
