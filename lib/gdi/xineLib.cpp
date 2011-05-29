@@ -16,6 +16,8 @@ cXineLib::cXineLib(x11_visual_t *vis) : m_pump(eApp, 1) {
 	end_of_stream = false;
 	videoPlayed = false;
 
+	printf("XINE-LIB version: %s\n", xine_get_version_string() );
+
 	xine = xine_new();
 	sprintf(configfile, "%s%s", xine_get_homedir(), "/.xine/config");
 	printf("configfile  %s\n", configfile);
@@ -40,7 +42,7 @@ cXineLib::cXineLib(x11_visual_t *vis) : m_pump(eApp, 1) {
 	vo_port->set_property(vo_port, VO_PROP_INTERLACED, 4);
 
 	//setPrebuffer(150000);
-	//xine_engine_set_param(xine, XINE_ENGINE_PARAM_VERBOSITY, XINE_VERBOSITY_DEBUG);
+	xine_engine_set_param(xine, XINE_ENGINE_PARAM_VERBOSITY, XINE_VERBOSITY_DEBUG);
 
 	xine_queue = xine_event_new_queue (stream);
 	xine_event_create_listener_thread(xine_queue, xine_event_handler, this);
@@ -107,7 +109,7 @@ void cXineLib::playVideo(void) {
 	videoPlayed = false;
 
 	printf("XINE try START !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-	if ( !xine_open(stream, "enigma") ) {
+	if ( !xine_open(stream, "enigma:/") ) {
 		printf("Unable to open stream !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
 	}
 
