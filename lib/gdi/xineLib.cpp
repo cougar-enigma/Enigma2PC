@@ -42,7 +42,7 @@ cXineLib::cXineLib(x11_visual_t *vis) : m_pump(eApp, 1) {
 	vo_port->set_property(vo_port, VO_PROP_INTERLACED, 4);
 
 	//setPrebuffer(150000);
-	xine_engine_set_param(xine, XINE_ENGINE_PARAM_VERBOSITY, XINE_VERBOSITY_DEBUG);
+	//xine_engine_set_param(xine, XINE_ENGINE_PARAM_VERBOSITY, XINE_VERBOSITY_DEBUG);
 
 	xine_queue = xine_event_new_queue (stream);
 	xine_event_create_listener_thread(xine_queue, xine_event_handler, this);
@@ -95,12 +95,15 @@ void cXineLib::showOsd() {
 }
 
 void cXineLib::newOsd(int width, int height, uint32_t *argb_buffer) {
+	osdWidth  = width;
+	osdHeight = height;
+
 	if (osd)
 		xine_osd_free(osd);
 
-	osd = xine_osd_new(stream, 0, 0, width, height);
-	xine_osd_set_extent(osd, width, height);
-	xine_osd_set_argb_buffer(osd, argb_buffer, 0, 0, width, height);
+	osd = xine_osd_new(stream, 0, 0, osdWidth, osdHeight);
+	xine_osd_set_extent(osd, osdWidth, osdHeight);
+	xine_osd_set_argb_buffer(osd, argb_buffer, 0, 0, osdWidth, osdHeight);
 }
 
 void cXineLib::playVideo(void) {
@@ -252,5 +255,22 @@ RESULT cXineLib::getPTS(pts_t &pts)
 		return 0;
 	
 	return -1;
+}
+
+void cXineLib::setVideoWindow(int window_x, int window_y, int window_width, int window_height)
+{
+	int left = window_x * windowWidth / osdWidth;
+	int top = window_y * windowHeight / osdHeight;
+	int width = window_width * windowWidth / osdWidth;
+	int height = window_height * windowHeight / osdHeight;
+
+	xine_osd_set_video_window(osd, left, top, width, height);
+	showOsd();
+}
+
+void cXineLib::updateWindowSize(int width, int height)
+{
+	windowWidth  = width;
+	windowHeight = height;
 }
 

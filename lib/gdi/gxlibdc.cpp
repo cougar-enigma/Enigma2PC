@@ -267,6 +267,7 @@ void gXlibDC::updateWindowState() {
 
 	XFlush(display);
 
+	xineLib->updateWindowSize(width, height);
 	xineLib->showOsd();
 }
 

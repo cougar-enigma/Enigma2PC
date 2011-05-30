@@ -1,5 +1,6 @@
 #include <lib/gui/evideo.h>
 #include <lib/gui/ewidgetdesktop.h>
+#include <lib/gdi/xineLib.h>
 
 static ePtr<eTimer> fullsizeTimer;
 static int pendingFullsize;
@@ -10,20 +11,8 @@ void setFullsize()
 	{
 		if (pendingFullsize & (1 << decoder))
 		{
-			for (int i=0; i<4; ++i)
-			{
-				const char *targets[]={"left", "top", "width", "height"};
-				char filename[128];
-				snprintf(filename, 128, "/proc/stb/vmpeg/%d/dst_%s", decoder, targets[i]);
-				FILE *f = fopen(filename, "w");
-				if (!f)
-				{
-					eDebug("failed to open %s - %m", filename);
-					break;
-				}
-				fprintf(f, "%08x\n", 0);
-				fclose(f);
-			}
+			cXineLib* xineLib = cXineLib::getInstance();
+			xineLib->setVideoWindow(0, 0, 0, 0);
 			pendingFullsize &= ~(1 << decoder);
 		}
 	}
@@ -113,49 +102,10 @@ void eVideoWidget::updatePosition(int disable)
 
 //	eDebug("m_user_rect %d %d -> %d %d", m_user_rect.left(), m_user_rect.top(), m_user_rect.width(), m_user_rect.height());
 
-	int left = pos.left() * 720 / m_fb_size.width();
-	int top = pos.top() * 576 / m_fb_size.height();
-	int width = pos.width() * 720 / m_fb_size.width();
-	int height = pos.height() * 576 / m_fb_size.height();
-
-	int tmp = left - (width * 4) / 100;
-	left = tmp < 0 ? 0 : tmp;
-	tmp = top - (height * 4) / 100;
-	top = tmp < 0 ? 0 : tmp;
-	tmp = (width * 108) / 100;
-	width = left + tmp > 720 ? 720 - left : tmp;
-	tmp = (height * 108) / 100;
-	height = top + tmp > 576 ? 576 - top : tmp;
-
-//	eDebug("picture recalced %d %d -> %d %d", left, top, width, height);
-
 	if (!disable)
 	{
-		for (int i=0; i<4; ++i)
-		{
-			const char *targets[]={"left", "top", "width", "height"};
-			char filename[128];
-			snprintf(filename, 128, "/proc/stb/vmpeg/%d/dst_%s", m_decoder, targets[i]);
-			FILE *f = fopen(filename, "w");
-			if (!f)
-			{
-				eDebug("failed to open %s - %m", filename);
-				break;
-			}
-			int val = 0;
-			{
-				switch (i)
-				{
-				case 0: val = left; break;
-				case 1: val = top; break;
-				case 2: val = width; break;
-				case 3: val = height; break;
-				}
-				fprintf(f, "%08x\n", val);
-				fclose(f);
-//				eDebug("%s %08x", filename, val);
-			}
-		}
+		cXineLib* xineLib = cXineLib::getInstance();
+		xineLib->setVideoWindow(pos.left(), pos.top(), pos.width(), pos.height());
 		pendingFullsize &= ~(1 << m_decoder);
 		m_state |= 8;
 	}

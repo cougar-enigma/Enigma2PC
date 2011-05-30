@@ -23,6 +23,8 @@ private:
         xine_streamtype_data_t  videoData, audioData;
 
 	bool                    videoPlayed;
+	int                     osdWidth, osdHeight;
+	int                     windowWidth, windowHeight;
 
 	int m_width, m_height, m_framerate, m_aspect, m_progressive;
 
@@ -57,6 +59,8 @@ public:
 	int getVideoFrameRate();
 	int getVideoAspect();
 	RESULT getPTS(pts_t &pts);
+	void setVideoWindow(int window_x, int window_y, int window_width, int window_height);
+	void updateWindowSize(int width, int height);
 
 };
 
