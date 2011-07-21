@@ -27,6 +27,9 @@ private:
 	int                     windowWidth, windowHeight;
 
 	int m_width, m_height, m_framerate, m_aspect, m_progressive;
+	int m_windowAspectRatio, m_policy43, m_policy169;
+	int m_zoom43_x, m_zoom43_y, m_zoom169_x, m_zoom169_y;
+	int m_sharpness, m_noise;
 
 	void setStreamType(int video);
 
@@ -34,6 +37,9 @@ private:
 
 	eFixedMessagePump<iTSMPEGDecoder::videoEvent> m_pump;
 	void pumpEvent(const iTSMPEGDecoder::videoEvent &event);
+
+	void set_zoom_settings(int x, int y);
+	void set_crop_settings(int left, int right, int top, int bottom);
 public:
 	bool                    end_of_stream;
 
@@ -58,10 +64,17 @@ public:
 	int getVideoHeight();
 	int getVideoFrameRate();
 	int getVideoAspect();
+	void adjust_policy();
 	RESULT getPTS(pts_t &pts);
 	void setVideoWindow(int window_x, int window_y, int window_width, int window_height);
 	void updateWindowSize(int width, int height);
 
+	void setDeinterlace(int global, int sd, int hd);
+	void setSDfeatures(int sharpness, int noise);
+	void setAspectRatio(int ratio);
+	void setPolicy43(int mode);
+	void setPolicy169(int mode);
+	void setZoom(int zoom43_x, int zoom43_y, int zoom169_x, int zoom169_y);
 };
 
 #endif

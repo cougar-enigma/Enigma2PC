@@ -15,4 +15,5 @@ dist_pkgdata_DATA = \
 	skin.xml \
 	startwizard.xml \
 	tutorialwizard.xml \
-	unicable.xml
+	unicable.xml \
+	xine.conf

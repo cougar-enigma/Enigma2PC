@@ -19,6 +19,8 @@ class VideoSetup(Screen, ConfigListScreen):
 		self.hw = hw
 		self.onChangedEntry = [ ]
 
+		self.port = "DVI-PC"
+
 		# handle hotplug by re-creating setup
 		self.onShow.append(self.startHotplug)
 		self.onHide.append(self.stopHotplug)
@@ -52,47 +54,34 @@ class VideoSetup(Screen, ConfigListScreen):
 	def createSetup(self):
 		level = config.usage.setup_level.index
 
-		self.list = [
-			getConfigListEntry(_("Video Output"), config.av.videoport)
-		]
+		self.list = [ ]
+		self.list.append(getConfigListEntry(_("Refresh Rate"), config.av.videorate))
+		self.list.append(getConfigListEntry(_("Aspect Ratio"), config.av.aspect))
 
-		# if we have modes for this port:
-		if config.av.videoport.value in config.av.videomode:
-			# add mode- and rate-selection:
-			self.list.append(getConfigListEntry(_("Mode"), config.av.videomode[config.av.videoport.value]))
-			if config.av.videomode[config.av.videoport.value].value == 'PC':
-				self.list.append(getConfigListEntry(_("Resolution"), config.av.videorate[config.av.videomode[config.av.videoport.value].value]))
-			else:
-				self.list.append(getConfigListEntry(_("Refresh Rate"), config.av.videorate[config.av.videomode[config.av.videoport.value].value]))
+		if config.av.aspect.value != "auto":
+			self.list.append(getConfigListEntry(_("Display 4:3 content as"), config.av.policy_43))
+			if config.av.policy_43.value == "zoom":
+				self.list.extend((
+					getConfigListEntry(_("Zoom 4:3 X"), config.pc.image4_3_zoom_x),
+					getConfigListEntry(_("Zoom 4:3 Y"), config.pc.image4_3_zoom_y)
+				))
 
-		port = config.av.videoport.value
-		if port not in config.av.videomode:
-			mode = None
-		else:
-			mode = config.av.videomode[port].value
-
-		# some modes (720p, 1080i) are always widescreen. Don't let the user select something here, "auto" is not what he wants.
-		force_wide = self.hw.isWidescreenMode(port, mode)
-
-		if not force_wide:
-			self.list.append(getConfigListEntry(_("Aspect Ratio"), config.av.aspect))
-
-		if force_wide or config.av.aspect.value in ("16_9", "16_10"):
-			self.list.extend((
-				getConfigListEntry(_("Display 4:3 content as"), config.av.policy_43),
-				getConfigListEntry(_("Display >16:9 content as"), config.av.policy_169)
-			))
-		elif config.av.aspect.value == "4_3":
 			self.list.append(getConfigListEntry(_("Display 16:9 content as"), config.av.policy_169))
+			if config.av.policy_169.value == "zoom":
+				self.list.extend((
+					getConfigListEntry(_("Zoom 16:9 X"), config.pc.image16_9_zoom_x),
+					getConfigListEntry(_("Zoom 16:9 Y"), config.pc.image16_9_zoom_y)
+				))
 
-#		if config.av.videoport.value == "DVI":
-#			self.list.append(getConfigListEntry(_("Allow Unsupported Modes"), config.av.edid_override))
-		if config.av.videoport.value == "Scart":
-			self.list.append(getConfigListEntry(_("Color Format"), config.av.colorformat))
-			if level >= 1:
-				self.list.append(getConfigListEntry(_("WSS on 4:3"), config.av.wss))
-				if SystemInfo["ScartSwitch"]:
-					self.list.append(getConfigListEntry(_("Auto scart switching"), config.av.vcrswitch))
+		self.list.append(getConfigListEntry(_("Deinterlacing"), config.av.deinterlace))
+		if config.av.deinterlace.value == "1":
+			self.list.append(getConfigListEntry(_("SD deinterlace method"), config.av.deinterlace_sd))
+			self.list.append(getConfigListEntry(_("HD deinterlace method"), config.av.deinterlace_hd))
+
+		self.list.append(getConfigListEntry(_("SD sharpness"), config.pc.sd_sharpness))
+		self.list.append(getConfigListEntry(_("SD noise reduction"), config.pc.sd_noise))
+
+		self.list.append(getConfigListEntry(_("Fullscreen default"), config.pc.default_fullscreen))
 
 		if level >= 1:
 			self.list.append(getConfigListEntry(_("AC3 default"), config.av.defaultac3))
@@ -122,25 +111,24 @@ class VideoSetup(Screen, ConfigListScreen):
 
 	def confirm(self, confirmed):
 		if not confirmed:
-			config.av.videoport.value = self.last_good[0]
-			config.av.videomode[self.last_good[0]].value = self.last_good[1]
-			config.av.videorate[self.last_good[1]].value = self.last_good[2]
+			config.av.videorate.value = self.last_good[2]
 			self.hw.setMode(*self.last_good)
 		else:
 			self.keySave()
 
 	def grabLastGoodMode(self):
-		port = config.av.videoport.value
-		mode = config.av.videomode[port].value
-		rate = config.av.videorate[mode].value
-		self.last_good = (port, mode, rate)
+                rate = config.av.videorate.value
+		self.last_good = (self.port, rate)
 
 	def apply(self):
-		port = config.av.videoport.value
-		mode = config.av.videomode[port].value
-		rate = config.av.videorate[mode].value
-		if (port, mode, rate) != self.last_good:
-			self.hw.setMode(port, mode, rate)
+		print "Apply"
+		rate = config.av.videorate.value
+		video_hw.updateAspect(None)
+		#deinterlace    = config.av.deinterlace.value
+		#deinterlace_sd = config.av.deinterlace_sd.value
+		#deinterlace_hd = config.av.deinterlace_hd.value
+		if (self.port, rate) != self.last_good:
+			self.hw.setMode(self.port, rate)
 			from Screens.MessageBox import MessageBox
 			self.session.openWithCallback(self.confirm, MessageBox, _("Is this videomode ok?"), MessageBox.TYPE_YESNO, timeout = 20, default = False)
 		else:
@@ -173,20 +161,18 @@ class VideomodeHotplug:
 
 	def hotplug(self, what):
 		print "hotplug detected on port '%s'" % (what)
-		port = config.av.videoport.value
-		mode = config.av.videomode[port].value
-		rate = config.av.videorate[mode].value
+		rate = config.av.videorate.value
 
-		if not self.hw.isModeAvailable(port, mode, rate):
-			print "mode %s/%s/%s went away!" % (port, mode, rate)
-			modelist = self.hw.getModeList(port)
+		if not self.hw.isModeAvailable(self.port, mode, rate):
+			print "mode %s/%s/%s went away!" % (self.port, mode, rate)
+			modelist = self.hw.getModeList(self.port)
 			if not len(modelist):
 				print "sorry, no other mode is available (unplug?). Doing nothing."
 				return
 			mode = modelist[0][0]
 			rate = modelist[0][1]
-			print "setting %s/%s/%s" % (port, mode, rate)
-			self.hw.setMode(port, mode, rate)
+			print "setting %s/%s/%s" % (self.port, mode, rate)
+			self.hw.setMode(self.port, mode, rate)
 
 hotplug = None
 

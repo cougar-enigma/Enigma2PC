@@ -1472,7 +1472,6 @@ RESULT eDVBServicePlay::seekRelative(int direction, pts_t to)
 RESULT eDVBServicePlay::getPlayPosition(pts_t &pos)
 {
 	ePtr<iDVBPVRChannel> pvr_channel;
-printf("DVBServicePlay::getPlayPosition\n");
 	
 	if ((m_timeshift_enabled ? m_service_handler_timeshift : m_service_handler).getPVRChannel(pvr_channel))
 		return -1;

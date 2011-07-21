@@ -97,7 +97,9 @@ def InitAVSwitch():
 				# TRANSLATORS: (aspect ratio policy: cropped content on left/right) in doubt, keep english term
 			"panscan": _("Pan&Scan"),  
 				# TRANSLATORS: (aspect ratio policy: display as fullscreen, even if this breaks the aspect)
-			"scale": _("Just Scale")},
+			"scale": _("Just Scale"),
+
+			"zoom": _("Zoom")},
 			default = "letterbox")
 	config.av.policy_43 = ConfigSelection(choices={
 				# TRANSLATORS: (aspect ratio policy: black bars on left/right) in doubt, keep english term.
@@ -105,9 +107,11 @@ def InitAVSwitch():
 				# TRANSLATORS: (aspect ratio policy: cropped content on left/right) in doubt, keep english term
 			"panscan": _("Pan&Scan"),  
 				# TRANSLATORS: (aspect ratio policy: display as fullscreen, with stretching the left/right)
-			"nonlinear": _("Nonlinear"),  
+			#"nonlinear": _("Nonlinear"),  
 				# TRANSLATORS: (aspect ratio policy: display as fullscreen, even if this breaks the aspect)
-			"scale": _("Just Scale")},
+			"scale": _("Just Scale"),
+
+			"zoom": _("Zoom")},
 			default = "pillarbox")
 	config.av.tvsystem = ConfigSelection(choices = {"pal": _("PAL"), "ntsc": _("NTSC"), "multinorm": _("multinorm")}, default="pal")
 	config.av.wss = ConfigEnableDisable(default = True)

@@ -131,6 +131,14 @@ def InitUsageConfig():
 
 	config.seek.speeds_backward.addNotifier(updateEnterBackward, immediate_feedback = False)
 
+	config.pc = ConfigSubsection();
+	config.pc.default_fullscreen = ConfigYesNo(default = False)
+ 	config.pc.zoom_enable = ConfigYesNo(default = False);
+ 	config.pc.image4_3_zoom_x = ConfigNumber(default = 100)
+ 	config.pc.image4_3_zoom_y = ConfigNumber(default = 100)
+ 	config.pc.image16_9_zoom_x = ConfigNumber(default = 100)
+ 	config.pc.image16_9_zoom_y = ConfigNumber(default = 100)
+
 def updateChoices(sel, choices):
 	if choices:
 		defval = None

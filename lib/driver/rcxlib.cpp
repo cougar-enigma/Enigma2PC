@@ -110,11 +110,16 @@ int eXlibInputDevice::translateKey(int key)
 	case 19:
 		return KEY_0;
 
+	case 26: // E
+		return KEY_EPG;
 
 	case 27: // R
 		return KEY_RECORD;
 	case 28: // T
 		return KEY_TV;
+
+	case 31: // I
+		return KEY_INFO;
 
 	case 33: // P
 		return KEY_PLAYPAUSE;
@@ -138,7 +143,6 @@ int eXlibInputDevice::translateKey(int key)
 	case 116:
 		return KEY_DOWN;
 
-
 	case 58: // M
 		return KEY_MUTE;
 
@@ -160,6 +164,11 @@ int eXlibInputDevice::translateKey(int key)
 		return KEY_VOLUMEDOWN;
 	case 86: // +
 		return KEY_VOLUMEUP;
+
+	case 112: // Page Up
+		return KEY_CHANNELUP;
+	case 117: // Page Down
+		return KEY_CHANNELDOWN;
 
 	default:
 		eDebug("unhandled KEYBOARD keycode: %d", key);

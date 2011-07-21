@@ -25,6 +25,7 @@ libnl2
 libnl2-dev
 python-dev
 swig
+python-twisted-mail
 
 2.) Build and install libdvbsi++:
 
@@ -59,7 +60,13 @@ autoreconf -i
 make
 make install
 
-6.) Build and install xine-lib:
+6.) Install pythonwifi:
+
+git clone git://git.berlios.de/pythonwifi
+cd pythonwifi
+python setup.py install
+
+7.) Build and install xine-lib:
 
 git clone git://projects.vdr-developer.org/xine-lib.git
 cd xine-lib
@@ -70,7 +77,7 @@ git apply path_to_file/Changes-for-enigma-branch-new_xine_plugin.patch
 make
 make install
 
-7.) Build and install enigma2:
+8.) Build and install enigma2:
 
 git clone git://github.com/cougar-enigma/Enigma2PC.git
 cd enigma2
@@ -80,12 +87,12 @@ autoreconf -i
 make
 make install
 
-8.) Build dvbsoftwareca kernel module:
+9.) Build dvbsoftwareca kernel module:
 cd dvbsoftwareca
 make   # You must have installed dvb-core (for example from s2-liplianin).
 insmod dvbsoftwareca.ko  # It will create ca0 and ca1 devices for adapter0
 
-9.) Prepare configuration files:
+10.) Prepare configuration files:
 put required configuration files in /usr/local/etc/tuxbox and /usr/local/etc/enigma2
 put logo.mvi in /usr/local/etc/tuxbox
 prepare /usr/local/etc/tuxbox/nim_sockets for your adapters
