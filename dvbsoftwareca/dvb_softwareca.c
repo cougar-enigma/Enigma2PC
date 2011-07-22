@@ -40,7 +40,7 @@
 
 static struct platform_device *dvblb_basedev;
 static struct ca_device* ca_devices[MAX_CA_DEVICES];
-int devices_counter = 2;
+int devices_counter = 0;
 static struct class *dvb_class;
 static struct cdev ca_devices_cdev;
 
@@ -204,8 +204,9 @@ static char *dvb_devnode(struct device *dev, mode_t *mode)
 
 static int __init dvblb_init(void)
 {
-	int i, ret, failed;
+	int i, j, ret, failed;
 	dev_t dev = MKDEV(DVBSOFTWARECA_MAJOR, 0);
+	char device_name[50];
 
 	failed=0;
 
@@ -230,7 +231,7 @@ static int __init dvblb_init(void)
 	dvb_class->devnode = dvb_devnode;
 
 	info("frontend loopback driver v"DVBSOFTWARECA_VERSION);
-	printk("dvbsoftwareca: registering %d adapters\n", devices_counter);
+	printk("dvbsoftwareca: registering adapters\n");
 
 	dvblb_basedev = platform_device_alloc("dvbsoftwareca", -1);
 	if (!dvblb_basedev) {
@@ -248,14 +249,33 @@ static int __init dvblb_init(void)
 		return -EFAULT;
 	}
 
-	for(i=0; i < devices_counter; i++) {
-		ret = create_ca_device(0, i, i);
-		if (ret != 0) {
-			info("dvbsoftwareca: Failed to add CA%d device", i);
-			failed = 1;
-			break;
+	for(i=0; i < 8; i++) {
+		for(j=0; (j<8 && devices_counter<MAX_CA_DEVICES); j++) {
+			struct file *filp;
+			
+			snprintf(device_name, 50, "/dev/dvb/adapter%d/frontend%d", i, j);
+			filp = filp_open(device_name,00,O_RDONLY);
+
+			if (!IS_ERR(filp) && filp!=NULL) {
+				filp_close(filp, NULL);
+
+				ret = create_ca_device(i, j, devices_counter++);
+				if (ret != 0) {
+					printk("dvbsoftwareca: Failed to add CA%d device for adapter%d\n", j, i);
+					failed = 1;
+					break;
+				}
+				printk("dvbsoftwareca: registered CA%d device for adapter%d\n", j, i);
+			}
+
 		}
+
+		if (failed)
+			break;
 	}
+
+	if (!failed)
+		printk("dvbsoftwareca: registered %d CA devices\n", devices_counter);
 	
 	if (failed) {
 		for(i = 0; i < devices_counter; i++) {
@@ -274,7 +294,7 @@ static int __init dvblb_init(void)
 static void __exit cleanup_dvblb_module(void)
 {
 	int i;
-	info("Unregistering CA devices");
+	printk("Unregistering CA devices");
 
 	for(i = 0; i < devices_counter; i++) {
 		destroy_ca_device(ca_devices[i]);

@@ -1,0 +1,45 @@
+From 4bf2d3bb689fbb8e8c87df9c90e408cbc310cc93 Mon Sep 17 00:00:00 2001
+From: cougar <cougar.enigma@gmail.com>
+Date: Fri, 22 Jul 2011 13:41:16 +0000
+Subject: [PATCH 2/2] Patch for SD/HD deinterlacing.
+
+---
+ include/xine/video_out.h        |    4 +++-
+ src/video_out/video_out_vdpau.c |    6 ++++++
+ 2 files changed, 9 insertions(+), 1 deletions(-)
+
+diff --git a/include/xine/video_out.h b/include/xine/video_out.h
+index 54204b7..b362bdd 100644
+--- a/include/xine/video_out.h
++++ b/include/xine/video_out.h
+@@ -267,7 +267,9 @@ struct xine_video_port_s {
+ #define VO_PROP_BUFS_TOTAL            26 /* read-only */
+ #define VO_PROP_BUFS_FREE             27 /* read-only */
+ #define VO_PROP_LAST_PTS              28
+-#define VO_NUM_PROPERTIES             29
++#define VO_PROP_DEINTERLACE_SD        29
++#define VO_PROP_DEINTERLACE_HD        30
++#define VO_NUM_PROPERTIES             31
+ 
+ /* number of colors in the overlay palette. Currently limited to 256
+    at most, because some alphablend functions use an 8-bit index into
+diff --git a/src/video_out/video_out_vdpau.c b/src/video_out/video_out_vdpau.c
+index 382df5e..454f58c 100644
+--- a/src/video_out/video_out_vdpau.c
++++ b/src/video_out/video_out_vdpau.c
+@@ -2013,6 +2013,12 @@ static int vdpau_set_property (vo_driver_t *this_gen, int property, int value)
+       this->deinterlace = value;
+       vdpau_set_deinterlace( this_gen );
+       break;
++    case VO_PROP_DEINTERLACE_SD:
++      this->deinterlace_method_sd = value;
++      break;
++    case VO_PROP_DEINTERLACE_HD:
++      this->deinterlace_method_hd = value;
++      break;
+     case VO_PROP_ZOOM_X:
+       if ((value >= XINE_VO_ZOOM_MIN) && (value <= XINE_VO_ZOOM_MAX)) {
+         this->zoom_x = value;
+-- 
+1.7.1
+

@@ -72,8 +72,9 @@ git clone git://projects.vdr-developer.org/xine-lib.git
 cd xine-lib
 git checkout df-osd-handling+alter-vdpau-h264-decoder
 ./autogen.sh --disable-xinerama --disable-musepack --prefix=/usr
-# apply patch Changes-for-enigma-branch-new_xine_plugin.patch from 'patches' directory
-git apply path_to_file/Changes-for-enigma-branch-new_xine_plugin.patch
+# apply 2 patches from 'patches' directory
+git apply path_to_file/0001-Changes-for-enigma-branch-new_xine_plugin.patch
+git apply path_to_file/0002-Patch-for-SD-HD-deinterlacing.patch
 make
 make install
 
