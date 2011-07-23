@@ -149,7 +149,7 @@ gXlibDC::~gXlibDC()
 void gXlibDC::keyEvent(const XKeyEvent &event)
 {
 	eXlibInputDriver *driver = eXlibInputDriver::getInstance();
-xineLib->getVideoFrameRate();
+
 	eDebug("SDL Key %s: key=%d", (event.type == KeyPress) ? "Down" : "Up", event.keycode);
 
 	if (driver)
